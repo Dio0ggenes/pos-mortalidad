@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["TTT", "DDD"],
+  "key": {
+    "T": { "item": "minecraft:totem_of_undying" },
+    "D": { "item": "minecraft:diamond_block" }
+  },
+  "result": { "item": "posmortal:totem_posmortalidad" }
+}
