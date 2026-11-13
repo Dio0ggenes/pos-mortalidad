@@ -1,1 +1,5 @@
-{ "item.posmortal.totem_posmortalidad": "Tótem de la Posmortalidad" }
+{
+  "item.posmortal.totem_posmortalidad": "Tótem de la Posmortalidad",
+  "key.posmortal.ability": "Habilidad del cuerpo",
+  "key.categories.posmortal": "Posmortal"
+}
