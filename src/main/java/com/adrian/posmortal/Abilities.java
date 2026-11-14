@@ -1,5 +1,6 @@
 package com.adrian.posmortal;
 
+import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -12,16 +13,18 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
+import net.minecraft.world.entity.projectile.AbstractArrow;
+import net.minecraft.world.entity.projectile.Arrow;
 import net.minecraft.world.entity.projectile.DragonFireball;
 import net.minecraft.world.entity.projectile.LargeFireball;
 import net.minecraft.world.entity.projectile.ShulkerBullet;
 import net.minecraft.world.entity.projectile.SmallFireball;
+import net.minecraft.world.entity.projectile.Snowball;
 import net.minecraft.world.entity.projectile.WitherSkull;
-import net.minecraft.world.level.Level;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.core.Direction;
 
 import java.util.Comparator;
 import java.util.HashMap;
@@ -32,6 +35,10 @@ import java.util.Set;
 public class Abilities {
     private static final Map<String, Long> CD = new HashMap<>();
 
+    private static final Set<String> ACTIVE = Set.of("minecraft:enderman", "minecraft:shulker", "minecraft:ender_dragon",
+            "minecraft:wither", "minecraft:warden", "minecraft:blaze", "minecraft:ghast", "minecraft:skeleton",
+            "minecraft:stray", "minecraft:pillager", "minecraft:chicken", "minecraft:snow_golem");
+
     private static final Set<String> BURNERS = Set.of("minecraft:zombie", "minecraft:skeleton", "minecraft:stray",
             "minecraft:drowned", "minecraft:zombie_villager");
     private static final Set<String> FIREPROOF = Set.of("minecraft:blaze", "minecraft:ghast", "minecraft:wither_skeleton",
@@ -41,6 +48,10 @@ public class Abilities {
             "minecraft:salmon", "minecraft:pufferfish", "minecraft:tropical_fish", "minecraft:dolphin",
             "minecraft:guardian", "minecraft:elder_guardian", "minecraft:drowned", "minecraft:axolotl",
             "minecraft:turtle");
+
+    public static boolean has(String id) {
+        return ACTIVE.contains(id);
+    }
 
     public static void passive(ServerPlayer p, String id) {
         ServerLevel lvl = p.serverLevel();
@@ -60,12 +71,14 @@ public class Abilities {
         }
     }
 
-    public static void use(ServerPlayer p, String id, boolean sneak) {
+    /** Devuelve true si este cuerpo tiene alguna habilidad activa (aunque esté en recarga). */
+    public static boolean use(ServerPlayer p, String id, boolean sneak) {
+        if (!has(id)) return false;
         ServerLevel lvl = p.serverLevel();
         long now = lvl.getGameTime();
         String ck = p.getUUID() + id + sneak;
         Long until = CD.get(ck);
-        if (until != null && now < until) return;
+        if (until != null && now < until) return true;
 
         Vec3 look = p.getLookAngle();
         int cd = 0;
@@ -106,16 +119,31 @@ public class Abilities {
                 launch(lvl, p, new LargeFireball(lvl, p, look.x, look.y, look.z, 2), look);
                 cd = 40;
             }
-            case "minecraft:creeper" -> {
-                lvl.explode(p, p.getX(), p.getY(), p.getZ(), 3f, Level.ExplosionInteraction.MOB);
-                PossessionEvents.exitPossession(p, false);
+            case "minecraft:skeleton", "minecraft:stray", "minecraft:pillager" -> {
+                Arrow a = new Arrow(lvl, p);
+                a.shootFromRotation(p, p.getXRot(), p.getYRot(), 0f, 3f, 1f);
+                a.pickup = AbstractArrow.Pickup.DISALLOWED;
+                lvl.addFreshEntity(a);
+                lvl.playSound(null, p.blockPosition(), SoundEvents.SKELETON_SHOOT, SoundSource.PLAYERS, 1f, 1f);
                 cd = 20;
             }
+            case "minecraft:chicken" -> {
+                p.spawnAtLocation(Items.EGG);
+                lvl.playSound(null, p.blockPosition(), SoundEvents.CHICKEN_EGG, SoundSource.PLAYERS, 1f, 1f);
+                cd = 200;
+            }
+            case "minecraft:snow_golem" -> {
+                Snowball s = new Snowball(lvl, p);
+                s.shootFromRotation(p, p.getXRot(), p.getYRot(), 0f, 1.5f, 1f);
+                lvl.addFreshEntity(s);
+                cd = 8;
+            }
             default -> {
-                return;
+                return false;
             }
         }
         if (cd > 0) CD.put(ck, now + cd);
+        return true;
     }
 
     private static void launch(ServerLevel lvl, ServerPlayer p, Entity proj, Vec3 look) {

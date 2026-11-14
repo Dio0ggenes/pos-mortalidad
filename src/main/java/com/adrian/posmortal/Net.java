@@ -20,6 +20,7 @@ public class Net {
     public static void init() {
         CH.registerMessage(0, ModelMsg.class, ModelMsg::enc, ModelMsg::dec, ModelMsg::handle);
         CH.registerMessage(1, AbilityMsg.class, AbilityMsg::enc, AbilityMsg::dec, AbilityMsg::handle);
+        CH.registerMessage(2, ExitMsg.class, ExitMsg::enc, ExitMsg::dec, ExitMsg::handle);
     }
 
     /** Servidor -> cliente: qué modelo lleva un jugador ("" = humano, "ghost", o id de entidad). */
@@ -63,6 +64,27 @@ public class Net {
             ServerPlayer sp = ctx.get().getSender();
             ctx.get().enqueueWork(() -> {
                 if (sp != null) PossessionEvents.useAbility(sp);
+            });
+            ctx.get().setPacketHandled(true);
+        }
+    }
+
+    /** Cliente -> servidor: botón "salir del cuerpo" del inventario. */
+    public static class ExitMsg {
+        public ExitMsg() {
+        }
+
+        static void enc(ExitMsg m, FriendlyByteBuf b) {
+        }
+
+        static ExitMsg dec(FriendlyByteBuf b) {
+            return new ExitMsg();
+        }
+
+        static void handle(ExitMsg m, Supplier<NetworkEvent.Context> ctx) {
+            ServerPlayer sp = ctx.get().getSender();
+            ctx.get().enqueueWork(() -> {
+                if (sp != null) PossessionEvents.exitPossession(sp, true);
             });
             ctx.get().setPacketHandled(true);
         }

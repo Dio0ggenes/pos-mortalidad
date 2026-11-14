@@ -1,9 +1,9 @@
 package com.adrian.posmortal;
 
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetExperiencePacket;
 import net.minecraft.resources.ResourceLocation;
@@ -19,25 +19,25 @@ import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.animal.IronGolem;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
-import net.minecraft.ChatFormatting;
 import net.minecraftforge.common.Tags;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityEvent;
-import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingChangeTargetEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
-import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.living.LivingFallEvent;
+import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -57,7 +57,6 @@ public class PossessionEvents {
     private static final String TEMP = "temp";
     private static final String TIMER = "timer";
     private static final String BODY = "body";
-    private static final String INV = "inv";
     private static final String TYPE = "type";
     private static final String FLY = "fly";
     private static final String VICTIM = "victim";
@@ -71,9 +70,7 @@ public class PossessionEvents {
     private static final int PLAYER_TICKS = 15 * 20;   // jugadores: 15 segundos
 
     private static final UUID HP_UUID = UUID.fromString("6c1f3a54-5d0e-4b57-9a0e-0f6a1b2c3d4e");
-    private static final Set<String> FLYERS = Set.of("minecraft:bat", "minecraft:bee", "minecraft:parrot",
-            "minecraft:allay", "minecraft:vex", "minecraft:blaze", "minecraft:ghast", "minecraft:phantom",
-            "minecraft:ender_dragon", "minecraft:wither");
+    private static final UUID GHOST_HP_UUID = UUID.fromString("0b7d5e61-2a34-4c8f-8e1d-5a9c7f3b2d10");
     private static final Set<String> NO_FALL = Set.of("minecraft:chicken", "minecraft:cat", "minecraft:ocelot",
             "minecraft:rabbit", "minecraft:silverfish", "minecraft:fox");
 
@@ -93,13 +90,56 @@ public class PossessionEvents {
         p.connection.send(new ClientboundSetExperiencePacket(progress, p.totalExperience, p.experienceLevel));
     }
 
+    private static void setHpMod(ServerPlayer p, UUID id, Double amount) {
+        AttributeInstance mh = p.getAttribute(Attributes.MAX_HEALTH);
+        mh.removeModifier(id);
+        if (amount != null) {
+            mh.addPermanentModifier(new AttributeModifier(id, "posmortal_hp", amount, AttributeModifier.Operation.ADDITION));
+        }
+    }
+
+    private static boolean hostileType(String id) {
+        ResourceLocation rl = new ResourceLocation(id);
+        if (!ForgeRegistries.ENTITY_TYPES.containsKey(rl)) return false;
+        return ForgeRegistries.ENTITY_TYPES.getValue(rl).getCategory() == MobCategory.MONSTER;
+    }
+
+    /** Deja a una entidad como cuerpo rojo: brillo rojo, sin IA, invulnerable. */
+    private static void markCorpse(Entity e) {
+        e.getPersistentData().putBoolean(CORPSE, true);
+        e.setInvulnerable(true);
+        if (e instanceof Mob m) {
+            m.setNoAi(true);
+            m.setHealth(m.getMaxHealth());
+        }
+        if (e instanceof LivingEntity le) {
+            le.addEffect(new MobEffectInstance(MobEffects.GLOWING, MobEffectInstance.INFINITE_DURATION, 0, false, false));
+        }
+        Scoreboard sb = e.level().getScoreboard();
+        PlayerTeam t = sb.getPlayerTeam("posmortal_corpse");
+        if (t == null) {
+            t = sb.addPlayerTeam("posmortal_corpse");
+            t.setColor(ChatFormatting.RED);
+        }
+        sb.addPlayerToTeam(e.getStringUUID(), t);
+    }
+
+    private static void leaveTeam(Entity e) {
+        Scoreboard sb = e.level().getScoreboard();
+        PlayerTeam old = sb.getPlayersTeam(e.getStringUUID());
+        if (old != null) sb.removePlayerFromTeam(e.getStringUUID(), old);
+    }
+
     // ---------------------------------------------------------------- estados
 
-    /** Fantasma: supervivencia, vuela, atraviesa bloques (el noclip se aplica en onLivingTick) y lleva el modelo fantasma. */
+    /** Fantasma: supervivencia, vuela siempre, mitad de vida, modelo fantasma. NO atraviesa bloques. */
     private static void applyGhost(ServerPlayer p) {
         CompoundTag d = data(p);
         d.putBoolean(GHOST, true);
         d.putBoolean(POSSESSING, false);
+        setHpMod(p, HP_UUID, null);
+        setHpMod(p, GHOST_HP_UUID, -10.0);
+        if (p.getHealth() > p.getMaxHealth()) p.setHealth(p.getMaxHealth());
         p.setGameMode(GameType.SURVIVAL);
         p.getAbilities().mayfly = true;
         p.getAbilities().flying = true;
@@ -111,6 +151,7 @@ public class PossessionEvents {
     private static void removeGhost(ServerPlayer p) {
         CompoundTag d = data(p);
         d.putBoolean(GHOST, false);
+        setHpMod(p, GHOST_HP_UUID, null);
         if (!p.getAbilities().instabuild) {
             p.getAbilities().mayfly = false;
             p.getAbilities().flying = false;
@@ -123,13 +164,15 @@ public class PossessionEvents {
     private static void possessMob(ServerPlayer p, LivingEntity le) {
         CompoundTag pd = le.getPersistentData();
         boolean corpse = pd.getBoolean(CORPSE);
-        if (corpse) {
-            int u = pd.getInt(USES);
-            if (u <= 0) {
-                msg(p, "Ese cuerpo está roto");
-                return;
-            }
-            pd.putInt(USES, u - 1); // cada posesión gasta un uso
+        ServerLevel lvl = p.serverLevel();
+
+        // cuerpo sin usos: se rompe al intentar entrar
+        if (corpse && pd.getInt(USES) <= 0) {
+            lvl.sendParticles(ParticleTypes.POOF, le.getX(), le.getY() + 0.5, le.getZ(), 20, 0.3, 0.3, 0.3, 0.02);
+            leaveTeam(le);
+            le.discard();
+            msg(p, "El cuerpo se ha roto");
+            return;
         }
 
         CompoundTag body = new CompoundTag();
@@ -137,7 +180,6 @@ public class PossessionEvents {
             msg(p, "No puedes poseer eso");
             return;
         }
-        ServerLevel lvl = p.serverLevel();
         double x = le.getX(), y = le.getY(), z = le.getZ();
         float yaw = le.getYRot();
         float maxHp = le.getMaxHealth();
@@ -145,6 +187,7 @@ public class PossessionEvents {
         String id = EntityType.getKey(le.getType()).toString();
         int left = pd.getInt(USES);
 
+        leaveTeam(le);
         le.discard();
 
         CompoundTag d = data(p);
@@ -154,39 +197,23 @@ public class PossessionEvents {
         d.putInt(TIMER, LIVE_TICKS);
         d.putString(TYPE, id);
 
-        // guarda tu inventario real y pone el del mob
-        ListTag inv = new ListTag();
-        p.getInventory().save(inv);
-        d.put(INV, inv);
-        p.getInventory().clearContent();
-        switch (id) {
-            case "minecraft:skeleton", "minecraft:stray" -> {
-                p.getInventory().add(new ItemStack(Items.BOW));
-                p.getInventory().add(new ItemStack(Items.ARROW, 32));
-            }
-            case "minecraft:wither_skeleton" -> p.getInventory().add(new ItemStack(Items.STONE_SWORD));
-            case "minecraft:pillager" -> p.getInventory().add(new ItemStack(Items.CROSSBOW));
-            default -> { }
-        }
-
         p.teleportTo(lvl, x, y, z, yaw, 0f);
 
-        AttributeInstance mh = p.getAttribute(Attributes.MAX_HEALTH);
-        mh.removeModifier(HP_UUID);
-        mh.addPermanentModifier(new AttributeModifier(HP_UUID, "posmortal_hp", maxHp - 20.0, AttributeModifier.Operation.ADDITION));
+        setHpMod(p, GHOST_HP_UUID, null);
+        setHpMod(p, HP_UUID, maxHp - 20.0);
         p.setHealth(Math.max(1f, Math.min(hp, maxHp)));
 
-        boolean fly = FLYERS.contains(id);
+        boolean fly = ModelState.FLYERS.contains(id);
         d.putBoolean(FLY, fly);
         p.getAbilities().setFlyingSpeed(0.05f);
         p.getAbilities().mayfly = fly || p.getAbilities().instabuild;
-        p.getAbilities().flying = false;
+        p.getAbilities().flying = fly;
         p.onUpdateAbilities();
 
         ModelState.set(p, id); // cambia modelo y hitbox
 
-        msg(p, corpse ? "Cuerpo poseído (usos restantes: " + left + "). /posmortal salir"
-                : "Tienes 5 s en este cuerpo");
+        String hint = Abilities.has(id) ? " | V: habilidad" : "";
+        msg(p, (corpse ? "Cuerpo poseído (usos restantes: " + left + ")" : "Tienes 5 s en este cuerpo") + hint);
         if (!corpse) sendXp(p, 1f);
     }
 
@@ -221,20 +248,22 @@ public class PossessionEvents {
         CompoundTag d = data(p);
         if (!d.getBoolean(POSSESSING)) return;
         ServerLevel lvl = p.serverLevel();
+        String note = null;
 
         if (restoreBody) {
             Optional<Entity> opt = EntityType.create(d.getCompound(BODY), lvl);
             if (opt.isPresent()) {
                 Entity e = opt.get();
+                e.setUUID(UUID.randomUUID()); // evita choques con el UUID del cuerpo original
                 e.moveTo(p.getX(), p.getY(), p.getZ(), p.getYRot(), 0f);
                 CompoundTag ed = e.getPersistentData();
-                boolean broken = ed.getBoolean(CORPSE) && ed.getInt(USES) <= 0;
-                if (broken) {
-                    lvl.sendParticles(ParticleTypes.POOF, p.getX(), p.getY() + 0.5, p.getZ(), 20, 0.3, 0.3, 0.3, 0.02);
-                    msg(p, "Tu cuerpo se ha roto");
-                } else {
-                    lvl.addFreshEntity(e);
+                if (ed.getBoolean(CORPSE)) {
+                    int left = Math.max(0, ed.getInt(USES) - 1); // cada salida gasta un uso
+                    ed.putInt(USES, left);
+                    markCorpse(e);
+                    note = "Cuerpo guardado (usos restantes: " + left + ")";
                 }
+                lvl.addFreshEntity(e);
             }
         }
 
@@ -242,32 +271,24 @@ public class PossessionEvents {
         d.putBoolean(TEMP, false);
         d.remove(BODY);
 
-        p.getAttribute(Attributes.MAX_HEALTH).removeModifier(HP_UUID);
-        p.getInventory().clearContent();
-        p.getInventory().load(d.getList(INV, 10));
-        d.remove(INV);
+        setHpMod(p, HP_UUID, null);
         p.removeAllEffects();
         p.clearFire();
         applyGhost(p);
         p.setHealth(p.getMaxHealth());
         sendXp(p, p.experienceProgress);
+        if (note != null) msg(p, note);
     }
 
     public static void useAbility(ServerPlayer p) {
         CompoundTag d = data(p);
-        if (d.getBoolean(POSSESSING)) Abilities.use(p, d.getString(TYPE), p.isShiftKeyDown());
+        if (!d.getBoolean(POSSESSING)) return;
+        if (!Abilities.use(p, d.getString(TYPE), p.isShiftKeyDown())) {
+            msg(p, "Este cuerpo no tiene habilidad activa");
+        }
     }
 
     // ---------------------------------------------------------------- eventos (ambos lados)
-
-    /** Noclip del fantasma. Se hace aquí porque Player.tick() reinicia noPhysics justo antes. */
-    @SubscribeEvent
-    public void onLivingTick(LivingEvent.LivingTickEvent e) {
-        if (e.getEntity() instanceof Player p && ModelState.isGhost(p.getUUID())) {
-            p.noPhysics = true;
-            p.fallDistance = 0f;
-        }
-    }
 
     /** Hitbox según el modelo. */
     @SubscribeEvent
@@ -345,8 +366,9 @@ public class PossessionEvents {
             return;
         }
 
-        // 2) Fantasma con la mano vacía sobre una entidad: poseer
-        if (d.getBoolean(GHOST) && !d.getBoolean(POSSESSING) && held.isEmpty() && target instanceof LivingEntity le) {
+        // 2) Fantasma (mano vacía o agachado) sobre una entidad: poseer
+        if (d.getBoolean(GHOST) && !d.getBoolean(POSSESSING) && (held.isEmpty() || p.isShiftKeyDown())
+                && target instanceof LivingEntity le) {
             e.setCanceled(true);
             e.setCancellationResult(InteractionResult.SUCCESS);
             if (le instanceof ServerPlayer tp) possessPlayer(p, tp);
@@ -354,14 +376,12 @@ public class PossessionEvents {
         }
     }
 
+    /** El fantasma no puede pegar a nadie. */
     @SubscribeEvent
-    public void onAttack(LivingAttackEvent e) {
-        if (e.getEntity() instanceof ServerPlayer p && !e.getEntity().level().isClientSide) {
+    public void onPlayerAttack(AttackEntityEvent e) {
+        if (e.getEntity() instanceof ServerPlayer p) {
             CompoundTag d = data(p);
-            if (d.getBoolean(GHOST) && !d.getBoolean(POSSESSING)
-                    && !e.getSource().is(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
-                e.setCanceled(true); // el fantasma no recibe daño
-            }
+            if (d.getBoolean(GHOST) && !d.getBoolean(POSSESSING)) e.setCanceled(true);
         }
     }
 
@@ -386,10 +406,10 @@ public class PossessionEvents {
                 if (totem != null) {
                     totem.shrink(1);
                     e.setCanceled(true);
-                    sp.setHealth(sp.getMaxHealth());
                     sp.removeAllEffects();
                     sp.clearFire();
                     applyGhost(sp);
+                    sp.setHealth(sp.getMaxHealth());
                     msg(sp, "El tótem te ha convertido en fantasma");
                 }
             }
@@ -400,27 +420,25 @@ public class PossessionEvents {
         CompoundTag pd = le.getPersistentData();
         if (pd.contains(USES) && !pd.getBoolean(CORPSE) && le instanceof Mob mob) {
             e.setCanceled(true);
-            pd.putBoolean(CORPSE, true);
-            mob.setHealth(mob.getMaxHealth());
-            mob.setInvulnerable(true);
-            mob.setNoAi(true);
-            Scoreboard sb = mob.level().getScoreboard();
-            PlayerTeam t = sb.getPlayerTeam("posmortal_corpse");
-            if (t == null) {
-                t = sb.addPlayerTeam("posmortal_corpse");
-                t.setColor(ChatFormatting.RED);
-            }
-            sb.addPlayerToTeam(mob.getStringUUID(), t);
-            mob.addEffect(new MobEffectInstance(MobEffects.GLOWING, MobEffectInstance.INFINITE_DURATION, 0, false, false));
+            markCorpse(mob);
         }
     }
 
-    /** Un Wither invocado por un jugador no ataca a quien lo invocó. */
     @SubscribeEvent
     public void onTarget(LivingChangeTargetEvent e) {
         LivingEntity t = e.getNewTarget();
+        if (t == null) return;
         CompoundTag pd = e.getEntity().getPersistentData();
-        if (t != null && pd.hasUUID(OWNER) && pd.getUUID(OWNER).equals(t.getUUID())) e.setCanceled(true);
+        // un Wither invocado no ataca a quien lo invocó
+        if (pd.hasUUID(OWNER) && pd.getUUID(OWNER).equals(t.getUUID())) {
+            e.setCanceled(true);
+            return;
+        }
+        // si posees un mob hostil, los otros hostiles te toman por uno de los suyos
+        if (t instanceof ServerPlayer sp && e.getEntity() instanceof Enemy) {
+            CompoundTag d = data(sp);
+            if (d.getBoolean(POSSESSING) && hostileType(d.getString(TYPE))) e.setCanceled(true);
+        }
     }
 
     @SubscribeEvent
@@ -440,7 +458,14 @@ public class PossessionEvents {
         CompoundTag d = data(p);
 
         if (d.getBoolean(POSSESSING)) {
-            Abilities.passive(p, d.getString(TYPE));
+            String type = d.getString(TYPE);
+            Abilities.passive(p, type);
+            // los golems de hierro sí atacan a quien posee un hostil
+            if (p.tickCount % 20 == 0 && hostileType(type)) {
+                for (IronGolem g : p.serverLevel().getEntitiesOfClass(IronGolem.class, p.getBoundingBox().inflate(16))) {
+                    if (g.getTarget() == null) g.setTarget(p);
+                }
+            }
             if (d.getBoolean(TEMP)) {
                 int t = d.getInt(TIMER) - 1;
                 d.putInt(TIMER, t);
