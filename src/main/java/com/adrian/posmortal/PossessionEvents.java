@@ -290,19 +290,22 @@ public class PossessionEvents {
 
     // ---------------------------------------------------------------- eventos (ambos lados)
 
-    /** Hitbox según el modelo. */
+    /** Hitbox y altura de ojos (punto de vista) según el modelo. */
     @SubscribeEvent
     public void onSize(EntityEvent.Size e) {
         if (!(e.getEntity() instanceof Player p)) return;
         String m = ModelState.MODELS.get(p.getUUID());
         if (m == null || m.isEmpty()) return;
         if (m.equals("ghost")) {
-            e.setNewSize(EntityDimensions.scalable(0.5f, 1.3f), true);
+            e.setNewSize(EntityDimensions.scalable(0.5f, 1.3f), false);
+            e.setNewEyeHeight(1.1f);
             return;
         }
         ResourceLocation rl = new ResourceLocation(m);
         if (!ForgeRegistries.ENTITY_TYPES.containsKey(rl)) return;
-        e.setNewSize(ForgeRegistries.ENTITY_TYPES.getValue(rl).getDimensions(), true);
+        EntityDimensions dims = ForgeRegistries.ENTITY_TYPES.getValue(rl).getDimensions();
+        e.setNewSize(dims, false);
+        e.setNewEyeHeight(dims.height * 0.85f);
     }
 
     // ---------------------------------------------------------------- eventos (servidor)

@@ -8,13 +8,19 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.client.renderer.entity.LivingEntityRenderer;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -23,6 +29,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.Slot;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.RenderHandEvent;
 import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.event.TickEvent;
@@ -194,41 +201,105 @@ public class ClientEvents {
         }
     }
 
-    // ---------------------------------------------------------------- inventario
+    // ---------------------------------------------------------------- mano en primera persona
+
+    /** Fantasma: sin mano. Dentro de un mob humanoide: se ve el brazo del mob. Otros mobs: sin mano. */
+    @SubscribeEvent
+    public static void onRenderHand(RenderHandEvent e) {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer lp = mc.player;
+        if (lp == null) return;
+        String m = ModelState.MODELS.get(lp.getUUID());
+        if (m == null || m.isEmpty()) return;
+        e.setCanceled(true); // oculta la mano de tu skin
+        if (m.equals("ghost") || e.getHand() != InteractionHand.MAIN_HAND) return;
+        try {
+            renderMobArm(lp, m, e, mc);
+        } catch (Exception ex) {
+            // si algo falla simplemente no se dibuja brazo
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void renderMobArm(LocalPlayer lp, String m, RenderHandEvent e, Minecraft mc) {
+        Entity proxy = proxyFor(lp, m, mc);
+        if (proxy == null) return;
+        EntityRenderer<? super Entity> r = mc.getEntityRenderDispatcher().getRenderer(proxy);
+        if (!(r instanceof LivingEntityRenderer<?, ?> lr) || !(lr.getModel() instanceof HumanoidModel<?> hm0)) return;
+        sync(lp, proxy);
+        HumanoidModel<LivingEntity> hm = (HumanoidModel<LivingEntity>) hm0;
+        hm.attackTime = 0f;
+        hm.crouching = false;
+        hm.swimAmount = 0f;
+        hm.setupAnim((LivingEntity) proxy, 0f, 0f, 0f, 0f, 0f);
+        hm.rightArm.xRot = 0f;
+        ResourceLocation tex = ((EntityRenderer<Entity>) r).getTextureLocation(proxy);
+
+        PoseStack ps = e.getPoseStack();
+        float swing = e.getSwingProgress();
+        float equip = e.getEquipProgress();
+        float f1 = Mth.sqrt(swing);
+        float f2 = -0.3f * Mth.sin(f1 * (float) Math.PI);
+        float f3 = 0.4f * Mth.sin(f1 * ((float) Math.PI * 2f));
+        float f4 = -0.4f * Mth.sin(swing * (float) Math.PI);
+        float f5 = Mth.sin(swing * swing * (float) Math.PI);
+        float f6 = Mth.sin(f1 * (float) Math.PI);
+
+        ps.pushPose();
+        ps.translate(f2 + 0.64000005f, f3 - 0.6f + equip * -0.6f, f4 - 0.71999997f);
+        ps.mulPose(Axis.YP.rotationDegrees(45f));
+        ps.mulPose(Axis.YP.rotationDegrees(f6 * 70f));
+        ps.mulPose(Axis.ZP.rotationDegrees(f5 * -20f));
+        ps.translate(-1f, 3.6f, 3.5f);
+        ps.mulPose(Axis.ZP.rotationDegrees(120f));
+        ps.mulPose(Axis.XP.rotationDegrees(200f));
+        ps.mulPose(Axis.YP.rotationDegrees(-135f));
+        ps.translate(5.6f, 0f, 0f);
+        hm.rightArm.render(ps, e.getMultiBufferSource().getBuffer(RenderType.entitySolid(tex)),
+                e.getPackedLight(), OverlayTexture.NO_OVERLAY);
+        ps.popPose();
+    }
+
+    // ---------------------------------------------------------------- inventario y cualquier interfaz con contenedor
+
+    /** El fantasma solo puede usar su barra de acceso rápido en CUALQUIER interfaz (inventario, mesa de crafteo, cofres...). */
+    private static boolean lockableScreen(Screen s) {
+        return s instanceof AbstractContainerScreen<?> && !(s instanceof CreativeModeInventoryScreen);
+    }
 
     @SubscribeEvent
     public static void onMousePressed(ScreenEvent.MouseButtonPressed.Pre e) {
-        if (!(e.getScreen() instanceof InventoryScreen inv)) return;
-        if (possessingClient() && exitButton().isMouseOver(e.getMouseX(), e.getMouseY())) {
+        if (possessingClient() && e.getScreen() instanceof InventoryScreen
+                && exitButton().isMouseOver(e.getMouseX(), e.getMouseY())) {
             exitButton().playDownSound(Minecraft.getInstance().getSoundManager());
             Net.CH.sendToServer(new Net.ExitMsg());
             e.setCanceled(true);
             return;
         }
-        if (isGhostClient()) {
-            Slot s = inv.getSlotUnderMouse();
-            if (s != null && (locked(s) || Screen.hasShiftDown())) e.setCanceled(true);
+        if (isGhostClient() && lockableScreen(e.getScreen())) {
+            Slot s = ((AbstractContainerScreen<?>) e.getScreen()).getSlotUnderMouse();
+            if (s == null || locked(s) || Screen.hasShiftDown()) e.setCanceled(true);
         }
     }
 
     @SubscribeEvent
     public static void onMouseReleased(ScreenEvent.MouseButtonReleased.Pre e) {
-        if (!(e.getScreen() instanceof InventoryScreen inv) || !isGhostClient()) return;
-        Slot s = inv.getSlotUnderMouse();
-        if (s != null && locked(s)) e.setCanceled(true);
+        if (!isGhostClient() || !lockableScreen(e.getScreen())) return;
+        Slot s = ((AbstractContainerScreen<?>) e.getScreen()).getSlotUnderMouse();
+        if (s == null || locked(s)) e.setCanceled(true);
     }
 
     @SubscribeEvent
     public static void onMouseDragged(ScreenEvent.MouseDragged.Pre e) {
-        if (!(e.getScreen() instanceof InventoryScreen inv) || !isGhostClient()) return;
-        Slot s = inv.getSlotUnderMouse();
-        if (s != null && locked(s)) e.setCanceled(true);
+        if (!isGhostClient() || !lockableScreen(e.getScreen())) return;
+        Slot s = ((AbstractContainerScreen<?>) e.getScreen()).getSlotUnderMouse();
+        if (s == null || locked(s)) e.setCanceled(true);
     }
 
     @SubscribeEvent
     public static void onKeyPressed(ScreenEvent.KeyPressed.Pre e) {
-        if (!(e.getScreen() instanceof InventoryScreen inv) || !isGhostClient()) return;
-        Slot s = inv.getSlotUnderMouse();
+        if (!isGhostClient() || !lockableScreen(e.getScreen())) return;
+        Slot s = ((AbstractContainerScreen<?>) e.getScreen()).getSlotUnderMouse();
         if ((s != null && locked(s))
                 || Minecraft.getInstance().options.keySwapOffhand.matches(e.getKeyCode(), e.getScanCode())) {
             e.setCanceled(true);
@@ -237,19 +308,19 @@ public class ClientEvents {
 
     @SubscribeEvent
     public static void onScreenRender(ScreenEvent.Render.Post e) {
-        if (!(e.getScreen() instanceof InventoryScreen inv)) return;
         GuiGraphics g = e.getGuiGraphics();
 
-        if (isGhostClient()) {
-            for (Slot s : inv.getMenu().slots) {
+        if (isGhostClient() && lockableScreen(e.getScreen())) {
+            AbstractContainerScreen<?> scr = (AbstractContainerScreen<?>) e.getScreen();
+            for (Slot s : scr.getMenu().slots) {
                 if (locked(s)) {
-                    int x = inv.getGuiLeft() + s.x, y = inv.getGuiTop() + s.y;
+                    int x = scr.getGuiLeft() + s.x, y = scr.getGuiTop() + s.y;
                     g.fill(x, y, x + 16, y + 16, 0xCC101010);
                 }
             }
         }
 
-        if (possessingClient()) {
+        if (possessingClient() && e.getScreen() instanceof InventoryScreen inv) {
             Button b = exitButton();
             b.setX(inv.getGuiLeft() + 176 + 4);
             b.setY(inv.getGuiTop() + 4);
