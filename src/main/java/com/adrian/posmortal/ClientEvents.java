@@ -94,15 +94,14 @@ public class ClientEvents {
         pr.xOld = p.xOld; pr.yOld = p.yOld; pr.zOld = p.zOld;
         pr.setYRot(p.getYRot()); pr.yRotO = p.yRotO;
         pr.setXRot(p.getXRot()); pr.xRotO = p.xRotO;
+        boolean newTick = pr.tickCount != p.tickCount;
         pr.tickCount = p.tickCount;
         pr.setPose(p.getPose());
         pr.setOnGround(p.onGround());
         if (pr instanceof LivingEntity l) {
             l.yBodyRot = p.yBodyRot; l.yBodyRotO = p.yBodyRotO;
             l.yHeadRot = p.yHeadRot; l.yHeadRotO = p.yHeadRotO;
-            l.animationPosition = p.animationPosition;
-            l.animationSpeed = p.animationSpeed;
-            l.animationSpeedOld = p.animationSpeedOld;
+            if (newTick) l.walkAnimation.update(p.walkAnimation.speed(), 1f);
             l.swinging = p.swinging; l.swingTime = p.swingTime;
             l.attackAnim = p.attackAnim; l.oAttackAnim = p.oAttackAnim;
             l.hurtTime = p.hurtTime;
