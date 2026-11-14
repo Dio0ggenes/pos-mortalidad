@@ -1,5 +1,7 @@
 package com.adrian.posmortal;
 
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
@@ -23,6 +25,13 @@ public class Posmortal {
     public static final DeferredRegister<RecipeSerializer<?>> RECIPES =
             DeferredRegister.create(ForgeRegistries.RECIPE_SERIALIZERS, MODID);
 
+    public static final DeferredRegister<EntityType<?>> ENTITIES =
+            DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, MODID);
+
+    public static final RegistryObject<EntityType<MilkBeam>> MILK_BEAM = ENTITIES.register("milk_beam",
+            () -> EntityType.Builder.<MilkBeam>of(MilkBeam::new, MobCategory.MISC)
+                    .sized(0.4f, 0.4f).clientTrackingRange(8).updateInterval(1).build("milk_beam"));
+
     public static final RegistryObject<Item> TOTEM = ITEMS.register("totem_posmortalidad",
             () -> new TotemItem(new Item.Properties().stacksTo(16).rarity(Rarity.EPIC).fireResistant()));
 
@@ -33,6 +42,7 @@ public class Posmortal {
         IEventBus bus = FMLJavaModLoadingContext.get().getModEventBus();
         ITEMS.register(bus);
         RECIPES.register(bus);
+        ENTITIES.register(bus);
         bus.addListener(this::common);
         bus.addListener(this::addCreative);
         MinecraftForge.EVENT_BUS.register(new PossessionEvents());

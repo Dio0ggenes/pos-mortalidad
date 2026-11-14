@@ -82,6 +82,11 @@ public class PossessionEvents {
         return root.getCompound(KEY);
     }
 
+    /** NBT del cuerpo que posee el jugador (para habilidades que dependen de él, p. ej. el color de la oveja). */
+    public static CompoundTag bodyTag(ServerPlayer p) {
+        return data(p).getCompound(BODY);
+    }
+
     private static void msg(ServerPlayer p, String s) {
         p.displayClientMessage(Component.literal(s), true);
     }
@@ -212,7 +217,7 @@ public class PossessionEvents {
 
         ModelState.set(p, id); // cambia modelo y hitbox
 
-        String hint = Abilities.has(id) ? " | V: habilidad" : "";
+        String hint = " | V: habilidad (Shift+V: otra)";
         msg(p, (corpse ? "Cuerpo poseído (usos restantes: " + left + ")" : "Tienes 5 s en este cuerpo") + hint);
         if (!corpse) sendXp(p, 1f);
     }
@@ -459,6 +464,7 @@ public class PossessionEvents {
     public void onTick(TickEvent.PlayerTickEvent e) {
         if (e.phase != TickEvent.Phase.END || !(e.player instanceof ServerPlayer p)) return;
         CompoundTag d = data(p);
+        Pets.tick(p);
 
         if (d.getBoolean(POSSESSING)) {
             String type = d.getString(TYPE);

@@ -12,6 +12,7 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -35,9 +36,13 @@ import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.util.ObfuscationReflectionHelper;
 import net.minecraftforge.registries.ForgeRegistries;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -176,7 +181,74 @@ public class ClientEvents {
         e.setCanceled(true);
         float pt = e.getPartialTick();
         EntityRenderer<? super Entity> r = mc.getEntityRenderDispatcher().getRenderer(proxy);
-        r.render(proxy, Mth.lerp(pt, p.yRotO, p.getYRot()), pt, e.getPoseStack(), e.getMultiBufferSource(), e.getPackedLight());
+        List<Saved> saved = null;
+        if ((m.equals("minecraft:cow") || m.equals("minecraft:mooshroom")) && r instanceof LivingEntityRenderer<?, ?> lr) {
+            saved = uprightCow(lr.getModel());
+        }
+        try {
+            r.render(proxy, Mth.lerp(pt, p.yRotO, p.getYRot()), pt, e.getPoseStack(), e.getMultiBufferSource(), e.getPackedLight());
+        } finally {
+            if (saved != null) for (Saved sv : saved) sv.restore();
+        }
+    }
+
+    // ---------------------------------------------------------------- partes del modelo (vaca a dos patas, patas como brazos)
+
+    /** Guarda la pose de una pieza del modelo para devolverla después (el modelo lo comparten TODAS las vacas del mundo). */
+    private static final class Saved {
+        final ModelPart part;
+        final float x, y, z, xr, yr, zr;
+
+        Saved(ModelPart p) {
+            part = p;
+            x = p.x; y = p.y; z = p.z;
+            xr = p.xRot; yr = p.yRot; zr = p.zRot;
+        }
+
+        void restore() {
+            part.setPos(x, y, z);
+            part.xRot = xr; part.yRot = yr; part.zRot = zr;
+        }
+    }
+
+    private static void setPose(ModelPart p, float x, float y, float z, float xr, float yr, float zr) {
+        p.setPos(x, y, z);
+        p.xRot = xr; p.yRot = yr; p.zRot = zr;
+    }
+
+    private static ModelPart findPart(Object model, String... names) {
+        for (Class<?> c = model.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            for (String n : names) {
+                try {
+                    Field f = ObfuscationReflectionHelper.findField(c, n);
+                    Object v = f.get(model);
+                    if (v instanceof ModelPart mp) return mp;
+                } catch (Exception ex) {
+                    // no está en esta clase
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Pone el modelo de la vaca de pie sobre las patas traseras; las delanteras quedan como brazos. */
+    private static List<Saved> uprightCow(Object model) {
+        ModelPart head = findPart(model, "head");
+        ModelPart body = findPart(model, "body");
+        ModelPart rh = findPart(model, "rightHindLeg");
+        ModelPart lh = findPart(model, "leftHindLeg");
+        ModelPart rf = findPart(model, "rightFrontLeg");
+        ModelPart lf = findPart(model, "leftFrontLeg");
+        if (head == null || body == null || rh == null || lh == null || rf == null || lf == null) return null;
+        List<Saved> list = new ArrayList<>();
+        for (ModelPart mp : new ModelPart[]{head, body, rh, lh, rf, lf}) list.add(new Saved(mp));
+        setPose(body, 0f, 4f, 0f, 0f, 0f, 0f);
+        setPose(head, 0f, -10f, 1f, 0f, 0f, 0f);
+        setPose(rh, -3f, 12f, -2f, 0f, 0f, 0f);
+        setPose(lh, 3f, 12f, -2f, 0f, 0f, 0f);
+        setPose(rf, -9f, -2f, -2f, 0f, 0f, 0f);
+        setPose(lf, 9f, -2f, -2f, 0f, 0f, 0f);
+        return list;
     }
 
     // ---------------------------------------------------------------- tick: habilidad y vuelo permanente
@@ -225,16 +297,35 @@ public class ClientEvents {
         Entity proxy = proxyFor(lp, m, mc);
         if (proxy == null) return;
         EntityRenderer<? super Entity> r = mc.getEntityRenderDispatcher().getRenderer(proxy);
-        if (!(r instanceof LivingEntityRenderer<?, ?> lr) || !(lr.getModel() instanceof HumanoidModel<?> hm0)) return;
+        if (!(r instanceof LivingEntityRenderer<?, ?> lr)) return;
         sync(lp, proxy);
-        HumanoidModel<LivingEntity> hm = (HumanoidModel<LivingEntity>) hm0;
-        hm.attackTime = 0f;
-        hm.crouching = false;
-        hm.swimAmount = 0f;
-        hm.setupAnim((LivingEntity) proxy, 0f, 0f, 0f, 0f, 0f);
-        hm.rightArm.xRot = 0f;
         ResourceLocation tex = ((EntityRenderer<Entity>) r).getTextureLocation(proxy);
+        Object model = lr.getModel();
 
+        if (model instanceof HumanoidModel<?> hm0) {
+            HumanoidModel<LivingEntity> hm = (HumanoidModel<LivingEntity>) hm0;
+            hm.attackTime = 0f;
+            hm.crouching = false;
+            hm.swimAmount = 0f;
+            hm.setupAnim((LivingEntity) proxy, 0f, 0f, 0f, 0f, 0f);
+            hm.rightArm.xRot = 0f;
+            drawArm(e, hm.rightArm, tex);
+            return;
+        }
+
+        // sin brazos (vaca, creeper, gallina...): se ve la pata delantera como si fuera el brazo
+        ModelPart leg = findPart(model, "rightFrontLeg", "rightArm", "rightLeg", "rightHindLeg");
+        if (leg == null) return;
+        Saved sv = new Saved(leg);
+        try {
+            setPose(leg, -5f, 2f, 0f, 0f, 0f, 0f);
+            drawArm(e, leg, tex);
+        } finally {
+            sv.restore();
+        }
+    }
+
+    private static void drawArm(RenderHandEvent e, ModelPart arm, ResourceLocation tex) {
         PoseStack ps = e.getPoseStack();
         float swing = e.getSwingProgress();
         float equip = e.getEquipProgress();
@@ -255,7 +346,7 @@ public class ClientEvents {
         ps.mulPose(Axis.XP.rotationDegrees(200f));
         ps.mulPose(Axis.YP.rotationDegrees(-135f));
         ps.translate(5.6f, 0f, 0f);
-        hm.rightArm.render(ps, e.getMultiBufferSource().getBuffer(RenderType.entitySolid(tex)),
+        arm.render(ps, e.getMultiBufferSource().getBuffer(RenderType.entitySolid(tex)),
                 e.getPackedLight(), OverlayTexture.NO_OVERLAY);
         ps.popPose();
     }
