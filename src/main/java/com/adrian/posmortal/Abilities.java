@@ -261,7 +261,7 @@ public class Abilities {
         }, "bee");
         alt(80, (p, l, look) -> {
             for (BlockPos bp : BlockPos.betweenClosed(p.blockPosition().offset(-4, -1, -4), p.blockPosition().offset(4, 1, 4))) {
-                net.minecraft.world.item.BoneMealItem.applyBonemeal(new ItemStack(Items.BONE_MEAL), l, bp.immutable());
+                net.minecraft.world.item.BoneMealItem.applyBonemeal(new ItemStack(Items.BONE_MEAL), l, bp.immutable(), p);
             }
             puff(p, ParticleTypes.HAPPY_VILLAGER, 20);
         }, "bee");
