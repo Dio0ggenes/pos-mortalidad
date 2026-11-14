@@ -123,10 +123,10 @@ public class ClientEvents {
         ps.popPose();
     }
 
-    private static Entity proxyFor(Player p, String typeId, Minecraft mc) {
+    private static Entity proxyFor(Player p, String model, Minecraft mc) {
         Entity cached = PROXIES.get(p.getUUID());
-        if (cached != null && typeId.equals(PROXY_TYPE.get(p.getUUID())) && cached.level() == mc.level) return cached;
-        ResourceLocation rl = new ResourceLocation(typeId);
+        if (cached != null && model.equals(PROXY_TYPE.get(p.getUUID())) && cached.level() == mc.level) return cached;
+        ResourceLocation rl = new ResourceLocation(ModelState.baseId(model));
         if (!ForgeRegistries.ENTITY_TYPES.containsKey(rl)) return null;
         EntityType<?> t = ForgeRegistries.ENTITY_TYPES.getValue(rl);
         if (t == EntityType.PLAYER) return null;
@@ -137,8 +137,15 @@ public class ClientEvents {
             return null;
         }
         if (en == null) return null;
+        // el tamaño del slime / cubo de magma y el ser bebé no viajan solos al cliente: se aplican aquí
+        int size = ModelState.size(model);
+        if (size > 0 && en instanceof net.minecraft.world.entity.monster.Slime sl) sl.setSize(size, false);
+        if (ModelState.baby(model)) {
+            if (en instanceof net.minecraft.world.entity.AgeableMob am) am.setBaby(true);
+            else if (en instanceof net.minecraft.world.entity.monster.Zombie z) z.setBaby(true);
+        }
         PROXIES.put(p.getUUID(), en);
-        PROXY_TYPE.put(p.getUUID(), typeId);
+        PROXY_TYPE.put(p.getUUID(), model);
         return en;
     }
 
@@ -182,7 +189,7 @@ public class ClientEvents {
         float pt = e.getPartialTick();
         EntityRenderer<? super Entity> r = mc.getEntityRenderDispatcher().getRenderer(proxy);
         List<Saved> saved = null;
-        if ((m.equals("minecraft:cow") || m.equals("minecraft:mooshroom")) && r instanceof LivingEntityRenderer<?, ?> lr) {
+        if ((ModelState.baseId(m).equals("minecraft:cow") || ModelState.baseId(m).equals("minecraft:mooshroom")) && r instanceof LivingEntityRenderer<?, ?> lr) {
             saved = uprightCow(lr.getModel());
         }
         try {
@@ -266,7 +273,7 @@ public class ClientEvents {
 
         // el fantasma y los cuerpos voladores vuelan siempre, sin doble toque de espacio
         String m = ModelState.MODELS.get(lp.getUUID());
-        if (m != null && (m.equals("ghost") || ModelState.FLYERS.contains(m))
+        if (m != null && (m.equals("ghost") || ModelState.FLYERS.contains(ModelState.baseId(m)))
                 && lp.getAbilities().mayfly && !lp.getAbilities().flying) {
             lp.getAbilities().flying = true;
             lp.onUpdateAbilities();

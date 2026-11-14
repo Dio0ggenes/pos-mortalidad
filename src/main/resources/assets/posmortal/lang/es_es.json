@@ -1,5 +1,9 @@
 {
   "item.posmortal.totem_posmortalidad": "Tótem de la Posmortalidad",
+  "item.posmortal.fornite_token": "Token del Fornite",
+  "entity.posmortal.milk_beam": "Rayo de leche",
+  "entity.posmortal.doppelganger": "Tu reflejo",
+  "subtitles.posmortal.token_use": "Token del Fornite",
   "key.posmortal.ability": "Habilidad del cuerpo",
   "key.categories.posmortal": "Posmortal"
 }

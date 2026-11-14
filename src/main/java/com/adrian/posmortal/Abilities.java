@@ -19,6 +19,7 @@ import net.minecraft.world.entity.AreaEffectCloud;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobCategory;
@@ -234,6 +235,28 @@ public class Abilities {
     }
 
     // ---------------------------------------------------------------- tabla de habilidades
+    // Cada mob tiene SU habilidad (nada de repetir la misma entre varios). V = principal, Shift+V = alternativa.
+
+    private static Block woolOf(ServerPlayer p) {
+        Block wool = ForgeRegistries.BLOCKS.getValue(new ResourceLocation(DyeColor.byId(body(p).getByte("Color")).getName() + "_wool"));
+        return (wool == null || wool == Blocks.AIR) ? Blocks.WHITE_WOOL : wool;
+    }
+
+    private static void strike(ServerLevel l, Vec3 pos) {
+        LightningBolt lb = EntityType.LIGHTNING_BOLT.create(l);
+        if (lb == null) return;
+        lb.moveTo(pos.x, pos.y, pos.z);
+        l.addFreshEntity(lb);
+    }
+
+    private static void spit(ServerPlayer p, ServerLevel l, Vec3 look, double spread) {
+        LlamaSpit s = new LlamaSpit(EntityType.LLAMA_SPIT, l);
+        s.setOwner(p);
+        s.setPos(p.getX() + look.x, p.getEyeY() - 0.2, p.getZ() + look.z);
+        s.shoot(look.x + (RNG.nextDouble() - 0.5) * spread, look.y + 0.1, look.z + (RNG.nextDouble() - 0.5) * spread, 1.5f, 5f);
+        l.addFreshEntity(s);
+        sound(p, SoundEvents.LLAMA_SPIT);
+    }
 
     static {
         // ===== animales =====
@@ -266,12 +289,26 @@ public class Abilities {
             puff(p, ParticleTypes.HAPPY_VILLAGER, 20);
         }, "bee");
 
-        main(60, (p, l, look) -> dash(p, look, 2.0, 0.2), "camel", "horse", "donkey", "mule", "skeleton_horse", "zombie_horse");
-        alt(120, (p, l, look) -> {
+        // caballería: cada una la suya
+        main(100, (p, l, look) -> {
             buff(p, MobEffects.MOVEMENT_SPEED, 120, 2);
-            buff(p, MobEffects.JUMP, 120, 2);
-        }, "horse", "skeleton_horse", "zombie_horse", "camel");
-        alt(60, (p, l, look) -> aoe(p, 3.5, 5f, 1.2, null), "donkey", "mule");
+            buff(p, MobEffects.JUMP, 120, 1);
+        }, "camel");
+        main(60, (p, l, look) -> {
+            dash(p, look, 2.2, 0.1);
+            ahead(p, look, 4, 5f, 1.0, null);
+        }, "horse");
+        alt(80, (p, l, look) -> aoe(p, 4, 4f, 1.5, null), "horse");
+        main(50, (p, l, look) -> ahead(p, look.scale(-1), 3.5, 6f, 1.6, null), "donkey");
+        main(300, (p, l, look) -> {
+            buff(p, MobEffects.ABSORPTION, 400, 1);
+            buff(p, MobEffects.MOVEMENT_SLOWDOWN, 100, 0);
+        }, "mule");
+        main(200, (p, l, look) -> {
+            LivingEntity t = target(p, 30);
+            strike(l, t != null ? t.position() : p.pick(30, 1f, false).getLocation());
+        }, "skeleton_horse");
+        main(80, (p, l, look) -> aoe(p, 4, 5f, 0.8, t -> buff(t, MobEffects.WITHER, 80, 0)), "zombie_horse");
 
         main(100, (p, l, look) -> aoe(p, 8, 0f, 1.0, t -> buff(t, MobEffects.MOVEMENT_SLOWDOWN, 60, 1)), "cat");
         alt(600, (p, l, look) -> {
@@ -291,16 +328,34 @@ public class Abilities {
             sound(p, SoundEvents.CHICKEN_EGG);
         }, "chicken");
 
-        main(40, (p, l, look) -> dash(p, look, 1.6, 0.05), "cod", "salmon", "tropical_fish", "tadpole", "silverfish");
+        // peces: uno distinto cada uno
+        main(120, (p, l, look) -> {
+            p.clearFire();
+            p.heal(2f);
+            buff(p, MobEffects.WATER_BREATHING, 200, 0);
+            puff(p, ParticleTypes.BUBBLE, 30);
+        }, "cod");
+        main(60, (p, l, look) -> {
+            p.setDeltaMovement(look.x * 0.6, 1.3, look.z * 0.6);
+            p.hurtMarked = true;
+            puff(p, ParticleTypes.SPLASH, 30);
+        }, "salmon");
+        main(100, (p, l, look) -> {
+            aoe(p, 6, 0f, 0.5, t -> buff(t, MobEffects.CONFUSION, 100, 0));
+            puff(p, ParticleTypes.FIREWORK, 30);
+        }, "tropical_fish");
         main(80, (p, l, look) -> {
             aoe(p, 3, 4f, 0.8, t -> buff(t, MobEffects.POISON, 120, 1));
             puff(p, ParticleTypes.BUBBLE_POP, 30);
         }, "pufferfish");
+        main(200, (p, l, look) -> {
+            buff(p, MobEffects.JUMP, 200, 1);
+            buff(p, MobEffects.SLOW_FALLING, 200, 0);
+        }, "tadpole");
         main(60, (p, l, look) -> {
             buff(p, MobEffects.DOLPHINS_GRACE, 200, 1);
             dash(p, look, 1.8, 0.1);
         }, "dolphin");
-        alt(80, (p, l, look) -> buff(p, MobEffects.JUMP, 80, 3), "salmon", "cod", "tropical_fish");
 
         // vaca: rayo de leche que CURA / ordeñarse
         main(40, (p, l, look) -> {
@@ -310,7 +365,7 @@ public class Abilities {
             b.shoot(look.x, look.y, look.z, 1.2f, 0f);
             l.addFreshEntity(b);
             sound(p, SoundEvents.COW_AMBIENT);
-        }, "cow", "mooshroom");
+        }, "cow");
         alt(20, (p, l, look) -> {
             if (takeItem(p, Items.BUCKET)) {
                 giveOrDrop(p, new ItemStack(Items.MILK_BUCKET));
@@ -319,6 +374,13 @@ public class Abilities {
                 msg(p, "Necesitas un cubo vacío para ordeñarte");
             }
         }, "cow");
+        main(100, (p, l, look) -> {
+            aoe(p, 5, 0f, 0.3, t -> {
+                buff(t, MobEffects.CONFUSION, 100, 0);
+                buff(t, MobEffects.MOVEMENT_SLOWDOWN, 60, 0);
+            });
+            puff(p, ParticleTypes.MYCELIUM, 40);
+        }, "mooshroom");
         alt(20, (p, l, look) -> {
             if (takeItem(p, Items.BOWL)) {
                 giveOrDrop(p, new ItemStack(Items.MUSHROOM_STEW));
@@ -328,18 +390,24 @@ public class Abilities {
             }
         }, "mooshroom");
 
-        main(80, (p, l, look) -> {
+        main(70, (p, l, look) -> {
             dash(p, look, 1.5, 0.35);
-            ahead(p, look, 3.5, 4f, 0.5, null);
-        }, "fox", "wolf", "cave_spider", "ocelot");
-        alt(300, (p, l, look) -> buff(p, MobEffects.INVISIBILITY, 100, 0), "fox", "ocelot");
-        alt(200, (p, l, look) -> {
+            ahead(p, look, 3.5, 5f, 0.5, null);
+        }, "fox");
+        alt(300, (p, l, look) -> buff(p, MobEffects.INVISIBILITY, 100, 0), "fox");
+        main(200, (p, l, look) -> {
             for (LivingEntity t : l.getEntitiesOfClass(LivingEntity.class, p.getBoundingBox().inflate(16), x -> x == p || x instanceof ServerPlayer || Pets.owned(x, p))) {
                 buff(t, MobEffects.DAMAGE_BOOST, 200, 0);
                 buff(t, MobEffects.MOVEMENT_SPEED, 200, 0);
             }
             sound(p, SoundEvents.WOLF_AMBIENT);
         }, "wolf");
+        alt(60, (p, l, look) -> ahead(p, look, 3.5, 6f, 0.3, t -> buff(t, MobEffects.WITHER, 60, 0)), "wolf");
+        main(300, (p, l, look) -> {
+            buff(p, MobEffects.INVISIBILITY, 100, 0);
+            buff(p, MobEffects.MOVEMENT_SPEED, 100, 1);
+        }, "ocelot");
+        alt(100, (p, l, look) -> buff(p, MobEffects.MOVEMENT_SPEED, 80, 2), "ocelot");
 
         main(60, (p, l, look) -> {
             LivingEntity t = target(p, 8);
@@ -353,7 +421,12 @@ public class Abilities {
         alt(40, (p, l, look) -> {
             p.setDeltaMovement(look.x * 0.8, 1.0, look.z * 0.8);
             p.hurtMarked = true;
-        }, "frog", "rabbit", "slime", "magma_cube");
+        }, "frog");
+        main(60, (p, l, look) -> {
+            p.setDeltaMovement(look.x * 1.0, 1.1, look.z * 1.0);
+            p.hurtMarked = true;
+        }, "rabbit");
+        alt(100, (p, l, look) -> buff(p, MobEffects.MOVEMENT_SPEED, 60, 2), "rabbit");
 
         main(120, (p, l, look) -> {
             for (LivingEntity t : around(p, 10)) buff(t, MobEffects.GLOWING, 160, 0);
@@ -371,8 +444,19 @@ public class Abilities {
         main(60, (p, l, look) -> {
             dash(p, look, 2.0, 0.15);
             ahead(p, look, 4, 7f, 1.5, null);
-        }, "goat", "hoglin", "zoglin", "polar_bear", "vindicator", "piglin_brute");
+        }, "goat");
         alt(100, (p, l, look) -> aoe(p, 6, 0f, 1.6, null), "goat");
+        main(60, (p, l, look) -> ahead(p, look, 3.5, 6f, 0.5, t -> {
+            t.setDeltaMovement(0, 1.0, 0);
+            t.hurtMarked = true;
+        }), "hoglin");
+        main(200, (p, l, look) -> {
+            buff(p, MobEffects.MOVEMENT_SPEED, 120, 1);
+            buff(p, MobEffects.DAMAGE_BOOST, 120, 0);
+            aoe(p, 4, 3f, 1.0, null);
+        }, "zoglin");
+        main(60, (p, l, look) -> ahead(p, look, 4, 9f, 1.4, null), "polar_bear");
+        alt(300, (p, l, look) -> buff(p, MobEffects.DAMAGE_BOOST, 200, 1), "polar_bear");
 
         main(60, (p, l, look) -> {
             LivingEntity t = target(p, 15);
@@ -396,16 +480,15 @@ public class Abilities {
             puff(p, ParticleTypes.CLOUD, 30);
             sound(p, SoundEvents.IRON_GOLEM_ATTACK);
         }, "iron_golem");
-        alt(100, (p, l, look) -> healAround(p, 6, 4f), "iron_golem");
+        alt(200, (p, l, look) -> {
+            buff(p, MobEffects.REGENERATION, 100, 2);
+            puff(p, ParticleTypes.HEART, 6);
+        }, "iron_golem");
 
+        main(50, (p, l, look) -> spit(p, l, look, 0), "llama");
         main(50, (p, l, look) -> {
-            LlamaSpit s = new LlamaSpit(EntityType.LLAMA_SPIT, l);
-            s.setOwner(p);
-            s.setPos(p.getX() + look.x, p.getEyeY() - 0.2, p.getZ() + look.z);
-            s.shoot(look.x, look.y + 0.1, look.z, 1.5f, 5f);
-            l.addFreshEntity(s);
-            sound(p, SoundEvents.LLAMA_SPIT);
-        }, "llama", "trader_llama");
+            for (int i = 0; i < 3; i++) spit(p, l, look, 0.25);
+        }, "trader_llama");
 
         main(80, (p, l, look) -> {
             dash(p, look, 1.2, 0.2);
@@ -416,28 +499,19 @@ public class Abilities {
             p.spawnAtLocation(Items.SLIME_BALL);
         }, "panda");
 
-        main(60, (p, l, look) -> dash(p, look, 2.2, 0.3), "parrot", "pig", "sniffer");
-        alt(120, (p, l, look) -> aoe(p, 8, 0f, 0.5, t -> buff(t, MobEffects.WEAKNESS, 100, 0)), "parrot");
-        alt(400, (p, l, look) -> {
+        main(120, (p, l, look) -> aoe(p, 8, 0f, 0.5, t -> buff(t, MobEffects.WEAKNESS, 100, 0)), "parrot");
+        main(400, (p, l, look) -> {
             net.minecraft.world.item.Item[] g = {Items.CARROT, Items.POTATO, Items.BEETROOT};
             p.spawnAtLocation(g[RNG.nextInt(g.length)]);
         }, "pig");
-        alt(300, (p, l, look) -> {
+        main(300, (p, l, look) -> {
             net.minecraft.world.item.Item[] g = {Items.TORCHFLOWER_SEEDS, Items.PITCHER_POD};
             p.spawnAtLocation(g[RNG.nextInt(g.length)]);
         }, "sniffer");
 
-        main(60, (p, l, look) -> {
-            p.setDeltaMovement(look.x * 1.0, 1.1, look.z * 1.0);
-            p.hurtMarked = true;
-        }, "rabbit");
-
         // oveja: explota y lanza lana de su color
         main(100, (p, l, look) -> {
-            int c = body(p).getByte("Color");
-            DyeColor color = DyeColor.byId(c);
-            Block wool = ForgeRegistries.BLOCKS.getValue(new ResourceLocation(color.getName() + "_wool"));
-            if (wool == null || wool == Blocks.AIR) wool = Blocks.WHITE_WOOL;
+            Block wool = woolOf(p);
             double x = p.getX(), y = p.getY(), z = p.getZ();
             BlockPos pos = BlockPos.containing(x, y + 1, z);
             for (int i = 0; i < 12; i++) {
@@ -454,9 +528,7 @@ public class Abilities {
             p.setInvulnerable(false);
         }, "sheep");
         alt(200, (p, l, look) -> {
-            int c = body(p).getByte("Color");
-            Block wool = ForgeRegistries.BLOCKS.getValue(new ResourceLocation(DyeColor.byId(c).getName() + "_wool"));
-            if (wool != null) p.spawnAtLocation(wool.asItem(), 1);
+            p.spawnAtLocation(woolOf(p).asItem(), 1);
             sound(p, SoundEvents.SHEEP_SHEAR);
         }, "sheep");
 
@@ -464,7 +536,6 @@ public class Abilities {
             buff(p, MobEffects.FIRE_RESISTANCE, 400, 0);
             buff(p, MobEffects.MOVEMENT_SPEED, 400, 1);
         }, "strider");
-
         main(200, (p, l, look) -> {
             buff(p, MobEffects.DAMAGE_RESISTANCE, 80, 3);
             buff(p, MobEffects.MOVEMENT_SLOWDOWN, 80, 2);
@@ -481,7 +552,7 @@ public class Abilities {
         }), "snow_golem");
 
         main(600, (p, l, look) -> buff(p, MobEffects.HERO_OF_THE_VILLAGE, 1200, 0), "villager");
-        alt(100, (p, l, look) -> healAround(p, 6, 4f), "villager");
+        alt(600, (p, l, look) -> p.spawnAtLocation(Items.EMERALD), "villager");
         main(300, (p, l, look) -> {
             buff(p, MobEffects.INVISIBILITY, 300, 0);
             buff(p, MobEffects.MOVEMENT_SPEED, 300, 0);
@@ -502,8 +573,13 @@ public class Abilities {
                 l.addFreshEntity(z);
             }
             sound(p, SoundEvents.ZOMBIE_AMBIENT);
-        }, "zombie", "zombie_villager");
-        alt(60, (p, l, look) -> ahead(p, look, 3.5, 5f, 0.6, t -> buff(t, MobEffects.HUNGER, 200, 1)), "zombie", "zombie_villager", "husk");
+        }, "zombie");
+        alt(60, (p, l, look) -> ahead(p, look, 3.5, 5f, 0.6, t -> buff(t, MobEffects.HUNGER, 200, 1)), "zombie");
+        main(300, (p, l, look) -> {
+            p.heal(10f);
+            buff(p, MobEffects.REGENERATION, 100, 2);
+            puff(p, ParticleTypes.HEART, 8);
+        }, "zombie_villager");
         main(120, (p, l, look) -> aoe(p, 6, 0f, 0.4, t -> {
             buff(t, MobEffects.HUNGER, 200, 1);
             buff(t, MobEffects.BLINDNESS, 80, 0);
@@ -526,14 +602,15 @@ public class Abilities {
                 msg(p, "Necesitas un lingote de oro para el trueque");
             }
         }, "piglin");
+        main(70, (p, l, look) -> aoe(p, 3.5, 8f, 1.0, t -> buff(t, MobEffects.MOVEMENT_SLOWDOWN, 40, 1)), "piglin_brute");
+        main(40, (p, l, look) -> ahead(p, look, 3.5, 12f, 0.8, null), "vindicator");
         alt(300, (p, l, look) -> {
-            buff(p, MobEffects.DAMAGE_BOOST, 200, 0);
-            buff(p, MobEffects.DAMAGE_RESISTANCE, 200, 0);
-        }, "vindicator", "piglin_brute", "piglin");
+            buff(p, MobEffects.DAMAGE_BOOST, 200, 1);
+            buff(p, MobEffects.MOVEMENT_SPEED, 200, 0);
+        }, "vindicator");
 
-        main(20, (p, l, look) -> shootArrow(p, l, false, null), "skeleton", "pillager");
-        main(20, (p, l, look) -> shootArrow(p, l, false, MobEffects.MOVEMENT_SLOWDOWN), "stray");
-        main(20, (p, l, look) -> shootArrow(p, l, true, MobEffects.WITHER), "wither_skeleton");
+        // ===== arqueros: flechas del inventario, cada uno la suya =====
+        main(20, (p, l, look) -> shootArrow(p, l, false, null), "skeleton");
         alt(100, (p, l, look) -> {
             for (int i = -1; i <= 1; i++) {
                 if (!takeArrow(p)) break;
@@ -542,7 +619,29 @@ public class Abilities {
                 a.pickup = AbstractArrow.Pickup.DISALLOWED;
                 l.addFreshEntity(a);
             }
-        }, "skeleton", "stray", "pillager", "wither_skeleton");
+        }, "skeleton");
+        main(20, (p, l, look) -> shootArrow(p, l, false, MobEffects.MOVEMENT_SLOWDOWN), "stray");
+        alt(120, (p, l, look) -> aoe(p, 6, 0f, 0.2, t -> {
+            buff(t, MobEffects.MOVEMENT_SLOWDOWN, 100, 1);
+            t.setTicksFrozen(t.getTicksRequiredToFreeze() + 80);
+        }), "stray");
+        main(20, (p, l, look) -> shootArrow(p, l, true, MobEffects.WITHER), "wither_skeleton");
+        alt(120, (p, l, look) -> aoe(p, 5, 0f, 0.3, t -> buff(t, MobEffects.WITHER, 100, 0)), "wither_skeleton");
+        main(25, (p, l, look) -> {
+            if (!takeArrow(p)) return;
+            Arrow a = new Arrow(l, p);
+            a.shootFromRotation(p, p.getXRot(), p.getYRot(), 0f, 3.5f, 0.5f);
+            a.setPierceLevel((byte) 3);
+            a.pickup = AbstractArrow.Pickup.DISALLOWED;
+            l.addFreshEntity(a);
+            sound(p, SoundEvents.CROSSBOW_SHOOT);
+        }, "pillager");
+        alt(400, (p, l, look) -> {
+            for (LivingEntity t : l.getEntitiesOfClass(LivingEntity.class, p.getBoundingBox().inflate(16), x -> x == p || x instanceof ServerPlayer || Pets.owned(x, p))) {
+                buff(t, MobEffects.DAMAGE_BOOST, 300, 0);
+            }
+            sound(p, SoundEvents.PILLAGER_CELEBRATE);
+        }, "pillager");
 
         // ===== monstruos =====
         main(60, (p, l, look) -> {
@@ -554,15 +653,17 @@ public class Abilities {
         }, "creeper");
 
         main(20, (p, l, look) -> teleport(p, 32), "enderman");
-        alt(40, (p, l, look) -> {
-            p.teleportTo(p.getX() + RNG.nextInt(17) - 8, p.getY() + 1, p.getZ() + RNG.nextInt(17) - 8);
-            sound(p, SoundEvents.ENDERMAN_TELEPORT);
-        }, "enderman", "endermite");
+        alt(100, (p, l, look) -> {
+            LivingEntity t = target(p, 30);
+            if (t != null) {
+                buff(t, MobEffects.WEAKNESS, 160, 1);
+                buff(t, MobEffects.BLINDNESS, 80, 0);
+            }
+        }, "enderman");
         main(40, (p, l, look) -> {
             p.teleportTo(p.getX() + RNG.nextInt(13) - 6, p.getY(), p.getZ() + RNG.nextInt(13) - 6);
             sound(p, SoundEvents.ENDERMAN_TELEPORT);
         }, "endermite");
-
         main(60, (p, l, look) -> teleport(p, 32), "shulker");
         alt(40, (p, l, look) -> {
             LivingEntity tgt = l.getEntitiesOfClass(LivingEntity.class, p.getBoundingBox().inflate(16), x -> x != p && !Pets.owned(x, p))
@@ -615,7 +716,7 @@ public class Abilities {
         main(10, (p, l, look) -> launch(l, p, new SmallFireball(l, p, look.x, look.y, look.z), look), "blaze");
         main(40, (p, l, look) -> launch(l, p, new LargeFireball(l, p, look.x, look.y, look.z, 2), look), "ghast");
 
-        // ravager (el grande de cuatro patas): vapor que daña más cuanto más cerca del centro
+        // ravager: vapor que daña más cuanto más cerca del centro
         main(120, (p, l, look) -> {
             double r = 8;
             for (LivingEntity t : around(p, r)) {
@@ -677,15 +778,24 @@ public class Abilities {
         }, "illusioner");
 
         main(50, (p, l, look) -> {
-            dash(p, look, 1.8, 0.1);
-            ahead(p, look, 3.5, 5f, 0.5, null);
-        }, "vex", "phantom");
+            Vec3 to = p.position().add(look.x * 6, 0, look.z * 6);
+            p.teleportTo(to.x, p.getY() + look.y * 6, to.z);
+            puff(p, ParticleTypes.POOF, 15);
+        }, "vex");
+        main(50, (p, l, look) -> {
+            dash(p, look, 2.4, 0.0);
+            ahead(p, look, 4, 6f, 0.5, null);
+        }, "phantom");
         alt(100, (p, l, look) -> buff(p, MobEffects.NIGHT_VISION, 600, 0), "phantom");
 
         main(80, (p, l, look) -> {
             aoe(p, 3.5, 6f, 1.0, t -> t.setSecondsOnFire(4));
             p.setDeltaMovement(0, 0.8, 0);
             p.hurtMarked = true;
+        }, "magma_cube");
+        alt(160, (p, l, look) -> {
+            aoe(p, 5, 0f, 0.3, t -> t.setSecondsOnFire(6));
+            puff(p, ParticleTypes.LAVA, 30);
         }, "magma_cube");
         main(60, (p, l, look) -> {
             p.setDeltaMovement(look.x * 0.5, 0.9, look.z * 0.5);
@@ -705,6 +815,15 @@ public class Abilities {
             }
         }, "slime");
 
+        main(80, (p, l, look) -> {
+            ahead(p, look, 3.5, 3f, 0.2, t -> buff(t, MobEffects.POISON, 300, 1));
+        }, "cave_spider");
+        alt(120, (p, l, look) -> {
+            ThrownPotion tp = new ThrownPotion(l, p);
+            tp.setItem(PotionUtils.setPotion(new ItemStack(Items.SPLASH_POTION), Potions.POISON));
+            tp.shootFromRotation(p, p.getXRot(), p.getYRot(), -10f, 0.8f, 1f);
+            l.addFreshEntity(tp);
+        }, "cave_spider");
         main(100, (p, l, look) -> {
             LivingEntity t = target(p, 12);
             BlockPos bp = t != null ? t.blockPosition() : p.blockPosition().offset((int) Math.round(look.x * 3), 0, (int) Math.round(look.z * 3));
@@ -713,13 +832,40 @@ public class Abilities {
         alt(60, (p, l, look) -> {
             p.setDeltaMovement(look.x * 1.2, 0.7, look.z * 1.2);
             p.hurtMarked = true;
-        }, "spider", "cave_spider");
+        }, "spider");
+        main(100, (p, l, look) -> {
+            buff(p, MobEffects.INVISIBILITY, 100, 0);
+            buff(p, MobEffects.DAMAGE_RESISTANCE, 100, 2);
+        }, "silverfish");
 
         main(100, (p, l, look) -> {
             aoe(p, 6, 10f, 1.5, null);
             puff(p, ParticleTypes.CLOUD, 40);
             sound(p, SoundEvents.IRON_GOLEM_ATTACK);
         }, "giant");
+    }
+
+    /** Habilidades del fantasma. SOLO se pueden usar en la arena de la boss fight. */
+    public static void ghostUse(ServerPlayer p, boolean sneak) {
+        ServerLevel l = p.serverLevel();
+        long now = l.getGameTime();
+        String ck = p.getUUID() + "ghost" + sneak;
+        Long until = CD.get(ck);
+        if (until != null && now < until) return;
+        Vec3 look = p.getLookAngle();
+        if (sneak) {
+            // Arrebato espectral: te lanzas hacia delante y eres inmune un instante
+            dash(p, look, 2.2, 0.05);
+            buff(p, MobEffects.DAMAGE_RESISTANCE, 12, 4);
+            puff(p, ParticleTypes.SOUL, 25);
+            CD.put(ck, now + 40);
+        } else {
+            // Grito espectral: onda que daña y empuja a todo lo que tengas cerca
+            aoe(p, 6, 10f, 1.6, null);
+            l.sendParticles(ParticleTypes.SOUL_FIRE_FLAME, p.getX(), p.getY() + 1, p.getZ(), 80, 2.5, 0.8, 2.5, 0.08);
+            sound(p, SoundEvents.WARDEN_SONIC_CHARGE);
+            CD.put(ck, now + 50);
+        }
     }
 
     // ---------------------------------------------------------------- uso

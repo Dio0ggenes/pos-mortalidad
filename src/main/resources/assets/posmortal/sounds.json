@@ -1,0 +1,8 @@
+{
+  "token_use": {
+    "subtitle": "subtitles.posmortal.token_use",
+    "sounds": [
+      { "name": "minecraft:block.beacon.activate", "type": "event" }
+    ]
+  }
+}

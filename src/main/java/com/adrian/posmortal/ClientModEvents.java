@@ -16,5 +16,6 @@ public class ClientModEvents {
     @SubscribeEvent
     public static void onRenderers(EntityRenderersEvent.RegisterRenderers e) {
         e.registerEntityRenderer(Posmortal.MILK_BEAM.get(), MilkBeamRenderer::new);
+        e.registerEntityRenderer(Posmortal.DOPPELGANGER.get(), DoppelgangerRenderer::new);
     }
 }

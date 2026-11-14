@@ -69,14 +69,16 @@ public class PossessionEvents {
     private static final int LIVE_TICKS = 5 * 20;      // mobs vivos: 5 segundos
     private static final int PLAYER_TICKS = 15 * 20;   // jugadores: 15 segundos
 
+    private static final UUID ARENA_ATK_UUID = UUID.fromString("3f9a1c22-7b0e-4d11-9c55-2e6a8d4b7f01");
+    private static final String MODEL = "model";
     private static final UUID HP_UUID = UUID.fromString("6c1f3a54-5d0e-4b57-9a0e-0f6a1b2c3d4e");
-    private static final UUID GHOST_HP_UUID = UUID.fromString("0b7d5e61-2a34-4c8f-8e1d-5a9c7f3b2d10");
+    static final UUID GHOST_HP_UUID = UUID.fromString("0b7d5e61-2a34-4c8f-8e1d-5a9c7f3b2d10");
     private static final Set<String> NO_FALL = Set.of("minecraft:chicken", "minecraft:cat", "minecraft:ocelot",
             "minecraft:rabbit", "minecraft:silverfish", "minecraft:fox");
 
     // ---------------------------------------------------------------- utilidades
 
-    private static CompoundTag data(Player p) {
+    static CompoundTag data(Player p) {
         CompoundTag root = p.getPersistentData();
         if (!root.contains(KEY)) root.put(KEY, new CompoundTag());
         return root.getCompound(KEY);
@@ -87,7 +89,7 @@ public class PossessionEvents {
         return data(p).getCompound(BODY);
     }
 
-    private static void msg(ServerPlayer p, String s) {
+    static void msg(ServerPlayer p, String s) {
         p.displayClientMessage(Component.literal(s), true);
     }
 
@@ -95,7 +97,7 @@ public class PossessionEvents {
         p.connection.send(new ClientboundSetExperiencePacket(progress, p.totalExperience, p.experienceLevel));
     }
 
-    private static void setHpMod(ServerPlayer p, UUID id, Double amount) {
+    static void setHpMod(ServerPlayer p, UUID id, Double amount) {
         AttributeInstance mh = p.getAttribute(Attributes.MAX_HEALTH);
         mh.removeModifier(id);
         if (amount != null) {
@@ -138,7 +140,7 @@ public class PossessionEvents {
     // ---------------------------------------------------------------- estados
 
     /** Fantasma: supervivencia, vuela siempre, mitad de vida, modelo fantasma. NO atraviesa bloques. */
-    private static void applyGhost(ServerPlayer p) {
+    static void applyGhost(ServerPlayer p) {
         CompoundTag d = data(p);
         d.putBoolean(GHOST, true);
         d.putBoolean(POSSESSING, false);
@@ -153,7 +155,7 @@ public class PossessionEvents {
         ModelState.set(p, "ghost");
     }
 
-    private static void removeGhost(ServerPlayer p) {
+    static void removeGhost(ServerPlayer p) {
         CompoundTag d = data(p);
         d.putBoolean(GHOST, false);
         setHpMod(p, GHOST_HP_UUID, null);
@@ -191,6 +193,10 @@ public class PossessionEvents {
         float hp = le.getHealth();
         String id = EntityType.getKey(le.getType()).toString();
         int left = pd.getInt(USES);
+        // variantes que el cliente no conoce: tamaño del slime / cubo de magma y si es bebé
+        int size = (id.equals("minecraft:slime") || id.equals("minecraft:magma_cube")) ? body.getInt("Size") + 1 : 0;
+        boolean baby = body.getInt("Age") < 0 || body.getBoolean("IsBaby");
+        String model = (size > 0 || baby) ? id + "#" + size + "#" + (baby ? 1 : 0) : id;
 
         leaveTeam(le);
         le.discard();
@@ -215,7 +221,8 @@ public class PossessionEvents {
         p.getAbilities().flying = fly;
         p.onUpdateAbilities();
 
-        ModelState.set(p, id); // cambia modelo y hitbox
+        d.putString(MODEL, model);
+        ModelState.set(p, model); // cambia modelo y hitbox
 
         String hint = " | V: habilidad (Shift+V: otra)";
         msg(p, (corpse ? "Cuerpo poseído (usos restantes: " + left + ")" : "Tienes 5 s en este cuerpo") + hint);
@@ -285,9 +292,46 @@ public class PossessionEvents {
         if (note != null) msg(p, note);
     }
 
+    public static boolean inArena(Entity e) {
+        return e.level().dimension().equals(BossFight.ARENA);
+    }
+
+    /** Fantasma "puro" (no dentro de un cuerpo). */
+    public static boolean isGhost(Player p) {
+        CompoundTag d = data(p);
+        return d.getBoolean(GHOST) && !d.getBoolean(POSSESSING);
+    }
+
+    /** Token del Fornite: alterna entre humano y fantasma. Devuelve true si cambió algo. */
+    public static boolean toggleGhost(ServerPlayer p) {
+        CompoundTag d = data(p);
+        if (d.getBoolean(POSSESSING)) {
+            msg(p, "Sal del cuerpo primero");
+            return false;
+        }
+        if (inArena(p)) return false;
+        if (d.getBoolean(GHOST)) removeGhost(p);
+        else applyGhost(p);
+        return true;
+    }
+
+    /** Dentro de la arena el fantasma tiene vida completa y pega más fuerte. */
+    static void arenaPowers(ServerPlayer p, boolean on) {
+        AttributeInstance atk = p.getAttribute(Attributes.ATTACK_DAMAGE);
+        atk.removeModifier(ARENA_ATK_UUID);
+        if (on) {
+            atk.addPermanentModifier(new AttributeModifier(ARENA_ATK_UUID, "posmortal_arena", 5.0, AttributeModifier.Operation.ADDITION));
+            setHpMod(p, GHOST_HP_UUID, null);
+            p.setHealth(p.getMaxHealth());
+        }
+    }
+
     public static void useAbility(ServerPlayer p) {
         CompoundTag d = data(p);
-        if (!d.getBoolean(POSSESSING)) return;
+        if (!d.getBoolean(POSSESSING)) {
+            if (d.getBoolean(GHOST) && inArena(p)) Abilities.ghostUse(p, p.isShiftKeyDown());
+            return;
+        }
         if (!Abilities.use(p, d.getString(TYPE), p.isShiftKeyDown())) {
             msg(p, "Este cuerpo no tiene habilidad activa");
         }
@@ -306,9 +350,13 @@ public class PossessionEvents {
             e.setNewEyeHeight(1.1f);
             return;
         }
-        ResourceLocation rl = new ResourceLocation(m);
+        String base = ModelState.baseId(m);
+        ResourceLocation rl = new ResourceLocation(base);
         if (!ForgeRegistries.ENTITY_TYPES.containsKey(rl)) return;
         EntityDimensions dims = ForgeRegistries.ENTITY_TYPES.getValue(rl).getDimensions();
+        int sz = ModelState.size(m);
+        if (sz > 0) dims = dims.scale(0.255f * sz);   // slime / cubo de magma: hitbox según su tamaño real
+        if (ModelState.baby(m)) dims = dims.scale(0.5f);
         e.setNewSize(dims, false);
         e.setNewEyeHeight(dims.height * 0.85f);
     }
@@ -333,7 +381,14 @@ public class PossessionEvents {
     public void onLogin(PlayerEvent.PlayerLoggedInEvent e) {
         if (!(e.getEntity() instanceof ServerPlayer p)) return;
         CompoundTag d = data(p);
-        if (d.getBoolean(POSSESSING)) ModelState.set(p, d.getString(TYPE));
+        if (inArena(p) && !d.getBoolean(POSSESSING) && !BossFight.hasBoss(p)) {
+            BossFight.fail(p); // te desconectaste y el jefe ya no está
+            return;
+        }
+        if (d.getBoolean(POSSESSING)) {
+            String mm = d.getString(MODEL);
+            ModelState.set(p, mm.isEmpty() ? d.getString(TYPE) : mm);
+        }
         else if (d.getBoolean(GHOST)) applyGhost(p);
     }
 
@@ -360,6 +415,14 @@ public class PossessionEvents {
         ItemStack held = p.getMainHandItem();
         CompoundTag d = data(p);
 
+        // 0) Estrella del portal a la boss fight
+        if (target instanceof net.minecraft.world.entity.Interaction it && it.getPersistentData().getBoolean(BossPortal.STAR)) {
+            e.setCanceled(true);
+            e.setCancellationResult(InteractionResult.SUCCESS);
+            BossPortal.activate(p, it);
+            return;
+        }
+
         // 1) Tótem sobre un mob: lo marca (usos = los del tótem)
         if (held.is(Posmortal.TOTEM.get())) {
             if (!(target instanceof Mob mob)) return;
@@ -375,7 +438,7 @@ public class PossessionEvents {
         }
 
         // 2) Fantasma (mano vacía o agachado) sobre una entidad: poseer
-        if (d.getBoolean(GHOST) && !d.getBoolean(POSSESSING) && (held.isEmpty() || p.isShiftKeyDown())
+        if (d.getBoolean(GHOST) && !d.getBoolean(POSSESSING) && !inArena(p) && (held.isEmpty() || p.isShiftKeyDown())
                 && target instanceof LivingEntity le) {
             e.setCanceled(true);
             e.setCancellationResult(InteractionResult.SUCCESS);
@@ -389,7 +452,7 @@ public class PossessionEvents {
     public void onPlayerAttack(AttackEntityEvent e) {
         if (e.getEntity() instanceof ServerPlayer p) {
             CompoundTag d = data(p);
-            if (d.getBoolean(GHOST) && !d.getBoolean(POSSESSING)) e.setCanceled(true);
+            if (d.getBoolean(GHOST) && !d.getBoolean(POSSESSING) && !inArena(p)) e.setCanceled(true);
         }
     }
 
@@ -400,6 +463,12 @@ public class PossessionEvents {
 
         if (le instanceof ServerPlayer sp) {
             CompoundTag sd = data(sp);
+            // muere en la arena: pierde el combate y vuelve a casa como fantasma
+            if (sd.getBoolean(GHOST) && !sd.getBoolean(POSSESSING) && inArena(sp)) {
+                e.setCanceled(true);
+                BossFight.fail(sp);
+                return;
+            }
             // muere dentro de un cuerpo: el cuerpo muere, vuelve a fantasma
             if (sd.getBoolean(POSSESSING)) {
                 e.setCanceled(true);
@@ -465,6 +534,7 @@ public class PossessionEvents {
         if (e.phase != TickEvent.Phase.END || !(e.player instanceof ServerPlayer p)) return;
         CompoundTag d = data(p);
         Pets.tick(p);
+        if (p.tickCount % 20 == 0) BossPortal.scan(p);
 
         if (d.getBoolean(POSSESSING)) {
             String type = d.getString(TYPE);

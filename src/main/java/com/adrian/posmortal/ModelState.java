@@ -17,6 +17,28 @@ public class ModelState {
             "minecraft:allay", "minecraft:vex", "minecraft:blaze", "minecraft:ghast", "minecraft:phantom",
             "minecraft:ender_dragon", "minecraft:wither");
 
+    /** "minecraft:slime#3#0" -> "minecraft:slime" (el sufijo lleva tamaño y si es bebé). */
+    public static String baseId(String m) {
+        if (m == null) return "";
+        int i = m.indexOf('#');
+        return i < 0 ? m : m.substring(0, i);
+    }
+
+    public static int size(String m) {
+        String[] a = m == null ? new String[0] : m.split("#");
+        if (a.length < 2) return 0;
+        try {
+            return Integer.parseInt(a[1]);
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
+    }
+
+    public static boolean baby(String m) {
+        String[] a = m == null ? new String[0] : m.split("#");
+        return a.length >= 3 && a[2].equals("1");
+    }
+
     public static boolean isGhost(UUID id) {
         return "ghost".equals(MODELS.get(id));
     }
