@@ -110,8 +110,12 @@ public class BossPortal {
         Interaction it = EntityType.INTERACTION.create(l);
         if (it == null) return;
         it.moveTo(x, y, z, 0f, 0f);
-        it.setWidth(1.2f);
-        it.setHeight(1.8f);
+        // el tamaño de la entidad Interaction solo se puede fijar por NBT
+        net.minecraft.nbt.CompoundTag size = new net.minecraft.nbt.CompoundTag();
+        it.saveWithoutId(size);
+        size.putFloat("width", 1.2f);
+        size.putFloat("height", 1.8f);
+        it.load(size);
         it.getPersistentData().putBoolean(STAR, true);
         it.getPersistentData().putUUID("star", star.getUUID());
         long[] corners = new long[CORNER.length];
