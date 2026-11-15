@@ -861,10 +861,10 @@ public class Abilities {
             CD.put(ck, now + 40);
         } else {
             // Grito espectral: onda que daña y empuja a todo lo que tengas cerca
-            aoe(p, 6, 10f, 1.6, null);
+            aoe(p, 7, 16f, 1.6, null);
             l.sendParticles(ParticleTypes.SOUL_FIRE_FLAME, p.getX(), p.getY() + 1, p.getZ(), 80, 2.5, 0.8, 2.5, 0.08);
             sound(p, SoundEvents.WARDEN_SONIC_CHARGE);
-            CD.put(ck, now + 50);
+            CD.put(ck, now + 45);
         }
     }
 

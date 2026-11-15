@@ -1,9 +1,15 @@
 {
   "item.posmortal.totem_posmortalidad": "Totem of Postmortality",
-  "item.posmortal.fornite_token": "Fornite Token",
+  "item.posmortal.posmortality_amulet": "Amulet of Postmortality",
+  "item.posmortal.nether_star_third": "Third of a Nether Star",
+  "block.posmortal.spectral_floor": "Spectral Floor",
+  "block.posmortal.spectral_stone": "Spectral Stone",
+  "block.posmortal.spectral_bricks": "Spectral Bricks",
+  "block.posmortal.spectral_pillar": "Spectral Pillar",
+  "block.posmortal.soul_crystal": "Soul Crystal",
   "entity.posmortal.milk_beam": "Milk Beam",
   "entity.posmortal.doppelganger": "Your Reflection",
-  "subtitles.posmortal.token_use": "Fornite Token",
+  "subtitles.posmortal.token_use": "Amulet of Postmortality",
   "key.posmortal.ability": "Body ability",
   "key.categories.posmortal": "Posmortal"
 }

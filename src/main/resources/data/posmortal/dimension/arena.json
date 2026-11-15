@@ -8,7 +8,7 @@
       "lakes": false,
       "layers": [
         { "block": "minecraft:bedrock", "height": 1 },
-        { "block": "minecraft:polished_blackstone", "height": 3 }
+        { "block": "posmortal:spectral_stone", "height": 3 }
       ],
       "structure_overrides": []
     }

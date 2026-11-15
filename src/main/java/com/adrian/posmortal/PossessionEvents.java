@@ -320,7 +320,7 @@ public class PossessionEvents {
         AttributeInstance atk = p.getAttribute(Attributes.ATTACK_DAMAGE);
         atk.removeModifier(ARENA_ATK_UUID);
         if (on) {
-            atk.addPermanentModifier(new AttributeModifier(ARENA_ATK_UUID, "posmortal_arena", 5.0, AttributeModifier.Operation.ADDITION));
+            atk.addPermanentModifier(new AttributeModifier(ARENA_ATK_UUID, "posmortal_arena", 8.0, AttributeModifier.Operation.ADDITION));
             setHpMod(p, GHOST_HP_UUID, null);
             p.setHealth(p.getMaxHealth());
         }
@@ -534,7 +534,10 @@ public class PossessionEvents {
         if (e.phase != TickEvent.Phase.END || !(e.player instanceof ServerPlayer p)) return;
         CompoundTag d = data(p);
         Pets.tick(p);
-        if (p.tickCount % 20 == 0) BossPortal.scan(p);
+        if (p.tickCount % 20 == 0) {
+            BossPortal.scan(p);
+            if (inArena(p)) BossFight.keepInside(p);
+        }
 
         if (d.getBoolean(POSSESSING)) {
             String type = d.getString(TYPE);

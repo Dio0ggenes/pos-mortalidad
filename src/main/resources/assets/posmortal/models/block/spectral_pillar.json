@@ -1,0 +1,1 @@
+{ "parent": "minecraft:block/cube_column", "textures": { "end": "posmortal:block/spectral_pillar_top", "side": "posmortal:block/spectral_pillar_side" } }

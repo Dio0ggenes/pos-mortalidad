@@ -72,12 +72,12 @@ public class Doppelganger extends Monster {
 
     public static AttributeSupplier.Builder createAttributes() {
         return Monster.createMonsterAttributes()
-                .add(Attributes.MAX_HEALTH, 300.0)
-                .add(Attributes.MOVEMENT_SPEED, 0.36)
-                .add(Attributes.ATTACK_DAMAGE, 5.0)
+                .add(Attributes.MAX_HEALTH, 500.0)
+                .add(Attributes.MOVEMENT_SPEED, 0.40)
+                .add(Attributes.ATTACK_DAMAGE, 8.0)
                 .add(Attributes.FOLLOW_RANGE, 48.0)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 0.7)
-                .add(Attributes.ARMOR, 6.0);
+                .add(Attributes.ARMOR, 10.0);
     }
 
     @Override
@@ -170,7 +170,7 @@ public class Doppelganger extends Monster {
         int newPhase = f > 0.66f ? 1 : f > 0.33f ? 2 : 3;
         if (newPhase != phase) {
             phase = newPhase;
-            getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(phase == 2 ? 0.42 : 0.50);
+            getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(phase == 2 ? 0.46 : 0.56);
             ServerLevel lvl = (ServerLevel) level();
             lvl.sendParticles(ParticleTypes.SOUL_FIRE_FLAME, getX(), getY() + 1, getZ(), 60, 0.6, 1.0, 0.6, 0.1);
             lvl.playSound(null, blockPosition(), SoundEvents.WITHER_SPAWN, SoundSource.HOSTILE, 1.5f, 1.4f);
@@ -190,7 +190,7 @@ public class Doppelganger extends Monster {
         if (t == null || !t.isAlive()) return;
         if (--attackCd <= 0) {
             attack(t);
-            attackCd = (phase == 1 ? 70 : phase == 2 ? 50 : 32) + random.nextInt(20);
+            attackCd = (phase == 1 ? 55 : phase == 2 ? 38 : 22) + random.nextInt(15);
         }
     }
 
@@ -233,7 +233,7 @@ public class Doppelganger extends Monster {
         setDeltaMovement(dir.x * 2.2, 0.2, dir.z * 2.2);
         hurtMarked = true;
         later(7, () -> {
-            hitArea(3.8, 7f, 1.2, false);
+            hitArea(4.2, 11f, 1.3, false);
             lvl().sendParticles(ParticleTypes.SWEEP_ATTACK, getX(), getY() + 1, getZ(), 6, 1.2, 0.3, 1.2, 0);
             lvl().playSound(null, blockPosition(), SoundEvents.PLAYER_ATTACK_SWEEP, SoundSource.HOSTILE, 1f, 0.8f);
         });
@@ -247,11 +247,11 @@ public class Doppelganger extends Monster {
             lvl().sendParticles(ParticleTypes.ENCHANTED_HIT, c.x + ox, c.y + 0.2, c.z + oz, 4, 0.1, 0.1, 0.1, 0);
         }
         later(18, () -> {
-            for (int i = 0; i < 14; i++) {
+            for (int i = 0; i < 22; i++) {
                 Arrow a = new Arrow(lvl(), this);
                 a.setPos(c.x + random.nextDouble() * 6 - 3, c.y + 10, c.z + random.nextDouble() * 6 - 3);
                 a.setDeltaMovement(0, -1.8, 0);
-                a.setBaseDamage(1.8);
+                a.setBaseDamage(2.4);
                 a.pickup = AbstractArrow.Pickup.DISALLOWED;
                 lvl().addFreshEntity(a);
             }
@@ -263,7 +263,7 @@ public class Doppelganger extends Monster {
         setDeltaMovement(0, 1.1, 0);
         hurtMarked = true;
         later(22, () -> {
-            hitArea(6.5, 9f, 1.4, true);
+            hitArea(7.5, 14f, 1.5, true);
             lvl().sendParticles(ParticleTypes.EXPLOSION, getX(), getY() + 0.3, getZ(), 12, 2.5, 0.2, 2.5, 0);
             lvl().playSound(null, blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 1.2f, 0.7f);
         });
@@ -272,14 +272,14 @@ public class Doppelganger extends Monster {
     /** 4) Abanico de dardos oscuros con efecto Wither. */
     private void darkFan(LivingEntity t) {
         Vec3 base = t.getEyePosition().subtract(getEyePosition()).normalize();
-        for (int i = -2; i <= 2; i++) {
-            double ang = Math.toRadians(i * 12);
+        for (int i = -3; i <= 3; i++) {
+            double ang = Math.toRadians(i * 11);
             double dx = base.x * Math.cos(ang) - base.z * Math.sin(ang);
             double dz = base.x * Math.sin(ang) + base.z * Math.cos(ang);
             Arrow a = new Arrow(lvl(), this);
             a.setPos(getX() + dx, getEyeY() - 0.2, getZ() + dz);
             a.shoot(dx, base.y, dz, 2.6f, 0f);
-            a.setBaseDamage(1.6);
+            a.setBaseDamage(2.2);
             a.addEffect(new MobEffectInstance(MobEffects.WITHER, 80, 0));
             a.setSecondsOnFire(100);
             a.pickup = AbstractArrow.Pickup.DISALLOWED;
@@ -299,7 +299,7 @@ public class Doppelganger extends Monster {
         lvl().playSound(null, blockPosition(), SoundEvents.ENDERMAN_TELEPORT, SoundSource.HOSTILE, 1f, 1.2f);
         later(8, () -> {
             if (distanceTo(t) < 4.0) {
-                t.hurt(damageSources().mobAttack(this), 9f);
+                t.hurt(damageSources().mobAttack(this), 14f);
                 lvl().sendParticles(ParticleTypes.DAMAGE_INDICATOR, t.getX(), t.getY() + 1, t.getZ(), 8, 0.3, 0.4, 0.3, 0.1);
             }
         });
@@ -310,8 +310,8 @@ public class Doppelganger extends Monster {
         for (int i = 0; i < 3; i++) {
             later(i * 10 + 1, () -> {
                 if (!t.isAlive() || distanceTo(t) > 18) return;
-                t.hurt(damageSources().magic(), 4f);
-                heal(6f);
+                t.hurt(damageSources().magic(), 6f);
+                heal(10f);
                 Vec3 a = getEyePosition(), b = t.getEyePosition();
                 for (int k = 0; k <= 10; k++) {
                     Vec3 p = a.lerp(b, k / 10.0);
@@ -327,16 +327,16 @@ public class Doppelganger extends Monster {
         t.setDeltaMovement(dir.x * 1.6, 0.35, dir.z * 1.6);
         t.hurtMarked = true;
         t.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 40, 2));
-        later(12, () -> hitArea(3.5, 8f, 1.0, false));
+        later(12, () -> hitArea(4.0, 12f, 1.0, false));
     }
 
     /** 8) Tormenta: tres rayos sobre tu posición. */
     private void lightning(LivingEntity t) {
         final Vec3 c = t.position();
         lvl().sendParticles(ParticleTypes.ELECTRIC_SPARK, c.x, c.y + 0.5, c.z, 30, 1.5, 0.2, 1.5, 0.1);
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 5; i++) {
             final int k = i;
-            later(16 + i * 8, () -> {
+            later(16 + i * 7, () -> {
                 LightningBolt lb = EntityType.LIGHTNING_BOLT.create(lvl());
                 if (lb == null) return;
                 lb.moveTo(c.x + (k == 0 ? 0 : random.nextDouble() * 6 - 3), c.y, c.z + (k == 0 ? 0 : random.nextDouble() * 6 - 3));
@@ -347,7 +347,7 @@ public class Doppelganger extends Monster {
 
     /** 9) Eclipse: invoca vex que te persiguen. */
     private void summonVexes(LivingEntity t) {
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
             Vex v = EntityType.VEX.create(lvl());
             if (v == null) continue;
             v.moveTo(getX() + random.nextDouble() * 4 - 2, getY() + 1.5, getZ() + random.nextDouble() * 4 - 2, getYRot(), 0f);
