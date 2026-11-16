@@ -11,5 +11,14 @@
   "entity.posmortal.doppelganger": "Your Reflection",
   "subtitles.posmortal.token_use": "Amulet of Postmortality",
   "key.posmortal.ability": "Body ability",
-  "key.categories.posmortal": "Posmortal"
+  "key.categories.posmortal": "Posmortal",
+  "item.posmortal.spectralium": "Spectralium",
+  "item.posmortal.mayonnaise": "Mayonnaise",
+  "item.posmortal.spectralium_sandwich": "Spectralium Sandwich",
+  "block.posmortal.halo_marble": "Celestial Marble",
+  "block.posmortal.halo_bricks": "Celestial Bricks",
+  "block.posmortal.halo_pillar": "Celestial Pillar",
+  "block.posmortal.halo_light": "Celestial Light",
+  "block.posmortal.cloud_block": "Cloud Block",
+  "entity.posmortal.limbo_ghost": "Ghost"
 }

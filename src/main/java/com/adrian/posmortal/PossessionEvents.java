@@ -375,6 +375,11 @@ public class PossessionEvents {
         CompoundTag d = data(p);
         d.putBoolean(POSSESSING, false);
         if (d.getBoolean(GHOST)) applyGhost(p);
+        // morir sin tótem: reapareces en el limbo y tienes que pelear con el fantasma
+        if (!e.isEndConquered()) {
+            if (d.getBoolean("limbo_dead")) d.putBoolean("limbo_dead", false); // moriste EN el limbo: vuelves al mundo normal
+            else Limbo.enter(p);
+        }
     }
 
     @SubscribeEvent
@@ -463,6 +468,12 @@ public class PossessionEvents {
 
         if (le instanceof ServerPlayer sp) {
             CompoundTag sd = data(sp);
+            // muere en el limbo: reaparece en el mundo normal (sin volver al limbo)
+            if (Limbo.inLimbo(sp)) {
+                sd.putBoolean("limbo_dead", true);
+                Limbo.cleanupIfEmpty(sp.server);
+                return;
+            }
             // muere en la arena: pierde el combate y vuelve a casa como fantasma
             if (sd.getBoolean(GHOST) && !sd.getBoolean(POSSESSING) && inArena(sp)) {
                 e.setCanceled(true);
@@ -536,6 +547,7 @@ public class PossessionEvents {
         Pets.tick(p);
         if (p.tickCount % 20 == 0) {
             BossPortal.scan(p);
+            Limbo.tick(p);
             if (inArena(p)) BossFight.keepInside(p);
         }
 
@@ -577,6 +589,10 @@ public class PossessionEvents {
                 }))
                 .then(Commands.literal("fantasma").requires(s -> s.hasPermission(2)).executes(c -> {
                     applyGhost(c.getSource().getPlayerOrException());
+                    return 1;
+                }))
+                .then(Commands.literal("limbo").requires(s -> s.hasPermission(2)).executes(c -> {
+                    Limbo.leave(c.getSource().getPlayerOrException());
                     return 1;
                 }))
                 .then(Commands.literal("humano").executes(c -> {

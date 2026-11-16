@@ -1,0 +1,13 @@
+{
+  "type": "posmortal:limbo",
+  "generator": {
+    "type": "minecraft:flat",
+    "settings": {
+      "biome": "posmortal:limbo",
+      "features": false,
+      "lakes": false,
+      "layers": [],
+      "structure_overrides": []
+    }
+  }
+}

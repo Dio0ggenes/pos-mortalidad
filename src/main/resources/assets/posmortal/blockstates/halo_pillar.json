@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "axis=y": { "model": "posmortal:block/halo_pillar" },
+    "axis=z": { "model": "posmortal:block/halo_pillar", "x": 90 },
+    "axis=x": { "model": "posmortal:block/halo_pillar", "x": 90, "y": 90 }
+  }
+}

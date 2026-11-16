@@ -50,9 +50,9 @@ import java.util.UUID;
 @Mod.EventBusSubscriber(modid = Posmortal.MODID, value = Dist.CLIENT)
 public class ClientEvents {
     /** Giro extra del modelo del fantasma. Si lo ves girado al revés, prueba -90 o 180. */
-    private static final float GHOST_YAW_OFFSET = 90f;
+    static final float GHOST_YAW_OFFSET = 90f;
 
-    private static final ResourceLocation GHOST_TEX = new ResourceLocation(Posmortal.MODID, "textures/entity/ghost.png");
+    static final ResourceLocation GHOST_TEX = new ResourceLocation(Posmortal.MODID, "textures/entity/ghost.png");
     private static BbModel ghostModel;
     private static boolean ghostFailed;
 
@@ -92,7 +92,7 @@ public class ClientEvents {
 
     // ---------------------------------------------------------------- modelos
 
-    private static BbModel ghost() {
+    static BbModel ghost() {
         if (ghostModel == null && !ghostFailed) {
             try {
                 ghostModel = BbModel.load("/assets/posmortal/models/entity/ghost.json");
